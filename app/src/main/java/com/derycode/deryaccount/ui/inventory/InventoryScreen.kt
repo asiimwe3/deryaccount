@@ -32,7 +32,17 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
     var search by remember { mutableStateOf("") }
     var editProduct by remember { mutableStateOf<Product?>(null) }
     var deleteProduct by remember { mutableStateOf<Product?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+
+    if (error != null) {
+        AlertDialog(
+            onDismissRequest = { error = null },
+            title = { Text("Not saved", fontWeight = FontWeight.Bold) },
+            text = { Text(error ?: "") },
+            confirmButton = { Button(onClick = { error = null }) { Text("OK") } }
+        )
+    }
 
     val filtered = if (search.isBlank()) products else products.filter {
         it.name.contains(search, ignoreCase = true) || (it.barcode?.contains(search) == true)
@@ -83,6 +93,7 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
                         onAdjust = { delta ->
                             val now = nowIso()
                             scope.launch {
+                                try {
                                 db.productDao().adjustStock(p.id, delta, now)
                                 db.stockMovementDao().upsert(
                                     com.derycode.deryaccount.data.local.entity.StockMovement(
@@ -91,6 +102,10 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
                                         qty = delta, reference = null, note = "manual adjust", movedAt = now,
                                         createdAt = now, updatedAt = now
                                     ))
+                                } catch (e: Exception) {
+                                    com.derycode.deryaccount.util.DbSafety.log(context, "Stock adjust", e)
+                                    error = com.derycode.deryaccount.util.DbSafety.friendly(e)
+                                }
                             }
                         },
                         onEdit = { editProduct = p },
@@ -119,7 +134,13 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
                                 postStockWriteOff(p.stockQty * p.costPrice, p.name)
                             }
                         } catch (_: Exception) {}
-                        db.productDao().delete(p.id)
+                        try {
+                            db.productDao().delete(p.id)
+                        } catch (e: Exception) {
+                            com.derycode.deryaccount.util.DbSafety.log(context, "Delete product", e)
+                            error = com.derycode.deryaccount.util.DbSafety.friendly(e)
+                            return@launch
+                        }
                         deleteProduct = null
                     }
                 }) { Text("Delete") }
@@ -174,6 +195,16 @@ private fun ProductRow(p: Product, onAdjust: (Double) -> Unit,
 @Composable
 private fun EditProductDialog(db: AppDatabase, p: Product, onDone: () -> Unit) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var saveError by remember { mutableStateOf<String?>(null) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    if (saveError != null) {
+        AlertDialog(
+            onDismissRequest = { saveError = null },
+            title = { Text("Not saved", fontWeight = FontWeight.Bold) },
+            text = { Text(saveError ?: "") },
+            confirmButton = { Button(onClick = { saveError = null }) { Text("OK") } }
+        )
+    }
     var name by remember { mutableStateOf(p.name) }
     var price by remember { mutableStateOf(p.retailPrice.toLong().toString()) }
     var cost by remember { mutableStateOf(p.costPrice.toLong().toString()) }
@@ -213,6 +244,7 @@ private fun EditProductDialog(db: AppDatabase, p: Product, onDone: () -> Unit) {
                 val q = stock.toDoubleOrNull() ?: return@Button
                 val al = alert.toDoubleOrNull() ?: 5.0
                 scope.launch {
+                  try {
                     val now = nowIso()
                     val delta = q - p.stockQty
                     val deltaValue = delta * cs
@@ -235,6 +267,10 @@ private fun EditProductDialog(db: AppDatabase, p: Product, onDone: () -> Unit) {
                         } catch (_: Exception) {}
                     }
                     onDone()
+                  } catch (e: Exception) {
+                    com.derycode.deryaccount.util.DbSafety.log(ctx, "Edit product", e)
+                    saveError = com.derycode.deryaccount.util.DbSafety.friendly(e)
+                  }
                 }
             }) { Text("Save") }
         },
@@ -244,6 +280,16 @@ private fun EditProductDialog(db: AppDatabase, p: Product, onDone: () -> Unit) {
 
 @Composable
 private fun AddProductDialog(db: AppDatabase, branchId: String, onDone: () -> Unit) {
+    var saveError by remember { mutableStateOf<String?>(null) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    if (saveError != null) {
+        AlertDialog(
+            onDismissRequest = { saveError = null },
+            title = { Text("Not saved", fontWeight = FontWeight.Bold) },
+            text = { Text(saveError ?: "") },
+            confirmButton = { Button(onClick = { saveError = null }) { Text("OK") } }
+        )
+    }
     var name by remember { mutableStateOf("") }
     var barcode by remember { mutableStateOf("") }
     var cost by remember { mutableStateOf("") }
@@ -268,6 +314,7 @@ private fun AddProductDialog(db: AppDatabase, branchId: String, onDone: () -> Un
                 if (name.isBlank() || price.isBlank()) return@Button
                 val now = nowIso()
                 scope.launch {
+                    try {
                     val id = java.util.UUID.randomUUID().toString()
                     db.productDao().upsert(Product(
                         id = id, name = name, barcode = barcode.ifBlank { null },
@@ -290,6 +337,10 @@ private fun AddProductDialog(db: AppDatabase, branchId: String, onDone: () -> Un
                             ))
                     }
                     onDone()
+                    } catch (e: Exception) {
+                        com.derycode.deryaccount.util.DbSafety.log(ctx, "Add product", e)
+                        saveError = com.derycode.deryaccount.util.DbSafety.friendly(e)
+                    }
                 }
             }) { Text("Save") }
         },

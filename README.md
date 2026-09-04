@@ -86,3 +86,10 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
 - Every receipt (thermal print, PDF, saved text) is printed in the shop's own
   name with its details and its sequential receipt number
   (e.g. DER-20260904-0007 = business code, date, sale of the day)
+
+## v0.5.2 — crash protection for stock saves
+- Every stock save (wizard, manual add, edit, adjust, delete) now catches
+  errors and shows a clear message instead of crashing to the home screen
+- Most common real-world cause: phone storage fills up (app saves a PDF
+  receipt per sale). New startup warning appears when space is low
+- Exact error details always logged to DeryAccount/crashes for support

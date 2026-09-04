@@ -41,7 +41,18 @@ fun QuickAddStockDialog(
     onManualAdd: () -> Unit   // "type my own item" fallback
 ) {
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var category by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    if (error != null) {
+        AlertDialog(
+            onDismissRequest = { error = null },
+            title = { Text("Stock not saved", fontWeight = FontWeight.Bold) },
+            text = { Text(error ?: "") },
+            confirmButton = { Button(onClick = { error = null }) { Text("OK") } }
+        )
+    }
 
     if (category == null) {
         CategoryPicker(
@@ -53,24 +64,29 @@ fun QuickAddStockDialog(
             category = category!!,
             onAdd = { picked, customName, customPrice, customQty, customCost ->
                 scope.launch {
-                    db.createProducts(picked, category!!, branchId)
-                    if (customName.isNotBlank() && customPrice > 0) {
-                        db.createProducts(listOf(
-                            Picked(BusinessCatalog.CatalogItem(customName, "pcs", customPrice),
-                                customQty, customCost)
-                        ), category!!, branchId)
-                    }
-                    // Post to the books: Dr Stock, Cr Cash — at COST price x qty,
-                    // so closing stock in the books always matches the Stock screen.
                     try {
-                        val total = picked.sumOf { it.qty * it.cost } +
-                            (if (customName.isNotBlank()) customQty * customCost else 0.0)
-                        com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
-                            ensureSeeded()
-                            postPurchase(total, "CASH", "opening stock")
+                        db.createProducts(picked, category!!, branchId)
+                        if (customName.isNotBlank() && customPrice > 0) {
+                            db.createProducts(listOf(
+                                Picked(BusinessCatalog.CatalogItem(customName, "pcs", customPrice),
+                                    customQty, customCost)
+                            ), category!!, branchId)
                         }
-                    } catch (_: Exception) { /* stock already saved */ }
-                    onDone()
+                        // Post to the books: Dr Stock, Cr Cash — at COST price x qty,
+                        // so closing stock in the books always matches the Stock screen.
+                        try {
+                            val total = picked.sumOf { it.qty * it.cost } +
+                                (if (customName.isNotBlank()) customQty * customCost else 0.0)
+                            com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
+                                ensureSeeded()
+                                postPurchase(total, "CASH", "opening stock")
+                            }
+                        } catch (_: Exception) { /* stock already saved */ }
+                        onDone()
+                    } catch (e: Exception) {
+                        com.derycode.deryaccount.util.DbSafety.log(context, "QuickAddStock", e)
+                        error = com.derycode.deryaccount.util.DbSafety.friendly(e)
+                    }
                 }
             },
             onBack = { category = null }

@@ -103,6 +103,23 @@ fun DeryAccountApp() {
         )
     }
 
+    // ---- storage guard: warn BEFORE saves start failing ----
+    var lowSpace by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        lowSpace = !com.derycode.deryaccount.util.DbSafety.freeSpaceOk(context)
+    }
+    if (lowSpace) {
+        AlertDialog(
+            onDismissRequest = { lowSpace = false },
+            title = { Text("Phone storage almost full", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("DeryAccount needs some free space to save sales, stock and receipts. " +
+                    "Please delete videos or files you don't need, then continue.")
+            },
+            confirmButton = { Button(onClick = { lowSpace = false }) { Text("OK, I will free space") } }
+        )
+    }
+
     val syncEngine = remember { SyncEngine(context, db) }
     DisposableEffect(Unit) {
         syncEngine.startPeriodic()
