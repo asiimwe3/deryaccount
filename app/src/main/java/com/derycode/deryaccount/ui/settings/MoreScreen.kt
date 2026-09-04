@@ -25,6 +25,7 @@ fun MoreScreen(
     syncEngine: SyncEngine,
     session: SessionManager,
     context: Context,
+    onNavigate: (String) -> Unit = {},
     onLogout: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -34,8 +35,20 @@ fun MoreScreen(
     var backupMsg by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Settings", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+        Text("More", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.height(12.dp))
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = { onNavigate("expenses") }, modifier = Modifier.weight(1f).height(52.dp)) {
+                Text("Expenses", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(onClick = { onNavigate("customers") }, modifier = Modifier.weight(1f).height(52.dp)) {
+                Text("Customers", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+        }
         Spacer(Modifier.height(16.dp))
+
+        Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold)
 
         // ---- On-device safe storage ----
         Card(Modifier.fillMaxWidth()) {

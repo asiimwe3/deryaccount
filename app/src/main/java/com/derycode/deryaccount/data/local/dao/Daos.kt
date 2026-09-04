@@ -69,6 +69,11 @@ interface SaleDao {
     @Query("""SELECT COUNT(*) FROM sales
               WHERE isDeleted = 0 AND branchId = :branchId AND soldAt BETWEEN :from AND :to""")
     suspend fun countBetween(branchId: String, from: String, to: String): Int
+
+    @Query("""SELECT COALESCE(SUM(total),0) FROM sales
+              WHERE isDeleted = 0 AND branchId = :branchId AND paymentMethod = :method
+              AND soldAt BETWEEN :from AND :to""")
+    suspend fun totalByMethodBetween(branchId: String, method: String, from: String, to: String): Double
 }
 
 @Dao
@@ -93,6 +98,10 @@ interface ExpenseDao {
 
     @Query("SELECT * FROM expenses WHERE syncState = 'pending'")
     suspend fun pendingSync(): List<Expense>
+
+    @Query("""SELECT COALESCE(SUM(amount),0) FROM expenses
+              WHERE isDeleted = 0 AND branchId = :branchId AND spentAt BETWEEN :from AND :to""")
+    suspend fun totalBetween(branchId: String, from: String, to: String): Double
 
     @Upsert
     suspend fun upsert(expense: Expense)

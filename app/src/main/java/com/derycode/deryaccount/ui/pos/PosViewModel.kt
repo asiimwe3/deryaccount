@@ -48,6 +48,9 @@ class PosViewModel(
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
+    /** Customers for credit sales (pick who is buying on credit). */
+    val customers = db.customerDao().observeAll()
+
     /** Full product catalog for the tap-to-sell tiles. */
     val catalog: Flow<List<com.derycode.deryaccount.data.local.entity.Product>> =
         db.productDao().observeBranchProducts(branchId)
@@ -104,6 +107,19 @@ class PosViewModel(
     }
 
     fun dismissQuickAdd() { _uiState.update { it.copy(unknownBarcode = null) } }
+
+    /** Create a customer on the spot, then hand the id back for the credit sale. */
+    fun addCustomer(name: String, phone: String?, onCreated: (String) -> Unit) {
+        viewModelScope.launch {
+            val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+                .format(java.util.Date())
+            val id = java.util.UUID.randomUUID().toString()
+            db.customerDao().upsert(com.derycode.deryaccount.data.local.entity.Customer(
+                id = id, name = name.trim(), phone = phone,
+                createdAt = now, updatedAt = now))
+            onCreated(id)
+        }
+    }
 
     fun addProduct(p: com.derycode.deryaccount.data.local.entity.Product) {
         viewModelScope.launch {
@@ -162,7 +178,7 @@ class PosViewModel(
         get() = _uiState.value.showPaymentDialog
         set(v) { _uiState.update { it.copy(showPaymentDialog = v) } }
 
-    fun checkout(method: String, amountPaid: Double) {
+    fun checkout(method: String, amountPaid: Double, customerId: String? = null) {
         val st = _uiState.value
         if (st.cart.isEmpty()) { _uiState.update { it.copy(error = "Cart is empty") }; return }
         viewModelScope.launch {
@@ -170,7 +186,7 @@ class PosViewModel(
                 val lines = st.cart.map { PosRepository.CartLine(it.product, it.qty, it.unitPrice) }
                 val result = repo.checkout(
                     branchId = branchId, userId = userId, lines = lines,
-                    customerId = null, saleType = st.saleType,
+                    customerId = customerId, saleType = st.saleType,
                     amountPaid = amountPaid, paymentMethod = method,
                     discount = st.discount
                 )

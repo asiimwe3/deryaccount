@@ -23,7 +23,7 @@ A visible `DeryAccount` folder is created on the device:
 
 ## Roadmap
 - Camera barcode scanning
-- Expenses & cash shift reconciliation screens
+- Cash shift reconciliation screen (expenses + end-of-day Z-report now shipped in v0.5.1)
 - Head-office multi-branch dashboard
 
 ## Books of Account (v0.2) — 100% offline, no external connection

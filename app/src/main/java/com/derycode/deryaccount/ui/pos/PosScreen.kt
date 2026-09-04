@@ -1,6 +1,8 @@
 package com.derycode.deryaccount.ui.pos
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -46,6 +48,7 @@ fun PosScreen(
     val scope = rememberCoroutineScope()
     var showBanner by remember { mutableStateOf(true) }
     var showCalc by remember { mutableStateOf(false) }
+    var showCreditPicker by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
 
     // Auto-open the print dialog after EVERY sale (receipt saved as PDF too)
@@ -189,7 +192,7 @@ fun PosScreen(
                         modifier = Modifier.weight(1f).height(58.dp)
                     ) { Text("MoMo", fontSize = 14.sp) }
                     OutlinedButton(
-                        onClick = { viewModel.pendingMethod = "CREDIT" },
+                        onClick = { if (ui.total > 0) showCreditPicker = true },
                         modifier = Modifier.weight(1f).height(58.dp)
                     ) { Text("Credit", fontSize = 14.sp) }
                 }
@@ -224,6 +227,10 @@ fun PosScreen(
     }
 
     // ---- Payment dialog for MoMo / Credit / change calculation ----
+    if (showCreditPicker) CreditPickerDialog(
+        viewModel = viewModel, total = ui.total, onDismiss = { showCreditPicker = false }
+    )
+
     if (ui.showPaymentDialog) PaymentDialog(
         total = ui.total,
         method = ui.pendingMethod ?: "CASH",
@@ -399,6 +406,76 @@ private fun ReceiptDialog(
                 TextButton(onClick = onDone) { Text("Done") }
             }
         }
+    )
+}
+
+/**
+ * Credit sale flow: pick the customer this sale goes on (or create them
+ * inline), then the sale posts to their balance. No customer = no credit.
+ */
+@Composable
+private fun CreditPickerDialog(
+    viewModel: PosViewModel,
+    total: Double,
+    onDismiss: () -> Unit
+) {
+    val customers by viewModel.customers.collectAsState(initial = emptyList())
+    var search by remember { mutableStateOf("") }
+    var newMode by remember { mutableStateOf(customers.isEmpty()) }
+    var newName by remember { mutableStateOf("") }
+    var newPhone by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sell on credit — UGX %,d".format(total.toLong())) },
+        text = Column(Modifier.verticalScroll(rememberScrollState())) {
+            if (newMode) {
+                Text("New customer", fontWeight = FontWeight.Bold)
+                OutlinedTextField(newName, { newName = it }, label = { Text("Name") }, singleLine = true)
+                Spacer(Modifier.height(6.dp))
+                OutlinedTextField(newPhone, { newPhone = it }, label = { Text("Phone (optional)") }, singleLine = true)
+                Spacer(Modifier.height(6.dp))
+                if (customers.isNotEmpty()) {
+                    TextButton(onClick = { newMode = false }) { Text("Choose existing instead") }
+                }
+            } else {
+                OutlinedTextField(search, { search = it },
+                    label = { Text("Find customer") }, singleLine = true)
+                Spacer(Modifier.height(6.dp))
+                val shown = customers.filter {
+                    search.isBlank() || it.name.contains(search, ignoreCase = true)
+                            || (it.phone?.contains(search) == true)
+                }
+                shown.take(8).forEach { cust ->
+                    ListItem(
+                        headlineContent = { Text(cust.name) },
+                        supportingContent = {
+                            Text(if (cust.balance > 0)
+                                "already owes UGX %,d".format(cust.balance.toLong())
+                            else cust.phone ?: "")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingContent = {
+                            TextButton(onClick = {
+                                onDismiss()
+                                viewModel.checkout("CREDIT", total, cust.id)
+                            }) { Text("Sell") }
+                        }
+                    )
+                    HorizontalDivider()
+                }
+                TextButton(onClick = { newMode = true }) { Text("+ New customer") }
+            }
+        },
+        confirmButton = {
+            if (newMode) Button(onClick = {
+                if (newName.isNotBlank()) viewModel.addCustomer(newName, newPhone.ifBlank { null }) { id ->
+                    onDismiss()
+                    viewModel.checkout("CREDIT", total, id)
+                }
+            }) { Text("Create & Sell") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 

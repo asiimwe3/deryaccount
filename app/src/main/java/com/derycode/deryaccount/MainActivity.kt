@@ -28,6 +28,8 @@ import com.derycode.deryaccount.ui.pos.PosScreen
 import com.derycode.deryaccount.ui.inventory.InventoryScreen
 import com.derycode.deryaccount.ui.pos.PosViewModel
 import com.derycode.deryaccount.ui.reports.ReportsScreen
+import com.derycode.deryaccount.ui.expenses.ExpensesScreen
+import com.derycode.deryaccount.ui.customers.CustomersScreen
 import com.derycode.deryaccount.ui.books.BooksScreen
 import com.derycode.deryaccount.accounting.AccountingRepo
 import com.derycode.deryaccount.ui.settings.MoreScreen
@@ -233,12 +235,19 @@ fun DeryAccountApp() {
             composable("reports") {
                 ReportsScreen(db, branchId)
             }
+            composable("expenses") {
+                ExpensesScreen(db, branchId, userId)
+            }
+            composable("customers") {
+                CustomersScreen(db)
+            }
             composable("books") {
                 val accounting = remember { AccountingRepo(db) }
                 BooksScreen(db, accounting)
             }
             composable("more") {
-                MoreScreen(db, syncEngine, session, context) {
+                MoreScreen(db, syncEngine, session, context,
+                    onNavigate = { route -> navController.navigate(route) { launchSingleTop = true } }) {
                     sessionState = null
                     scope.launch { session.logout() }
                 }
@@ -254,5 +263,8 @@ private fun appTitle(route: String?): String = when (route) {
     "inventory" -> "Stock"
     "books" -> "Books of Account"
     "reports" -> "Reports"
+    "expenses" -> "Expenses"
+    "customers" -> "Customers"
+    "more" -> "More"
     else -> "DeryAccount"
 }
