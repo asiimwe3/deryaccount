@@ -428,7 +428,7 @@ private fun CreditPickerDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Sell on credit — UGX %,d".format(total.toLong())) },
-        text = Column(Modifier.verticalScroll(rememberScrollState())) {
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             if (newMode) {
                 Text("New customer", fontWeight = FontWeight.Bold)
                 OutlinedTextField(newName, { newName = it }, label = { Text("Name") }, singleLine = true)
@@ -462,11 +462,11 @@ private fun CreditPickerDialog(
                             }) { Text("Sell") }
                         }
                     )
-                    HorizontalDivider()
+                    Divider()
                 }
                 TextButton(onClick = { newMode = true }) { Text("+ New customer") }
             }
-        },
+        } },
         confirmButton = {
             if (newMode) Button(onClick = {
                 if (newName.isNotBlank()) viewModel.addCustomer(newName, newPhone.ifBlank { null }) { id ->

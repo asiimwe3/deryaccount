@@ -105,19 +105,19 @@ fun ReportsScreen(db: AppDatabase, branchId: String) {
         AlertDialog(
             onDismissRequest = { showEndOfDay = false },
             title = { Text("End of Day") },
-            text = Column(Modifier.verticalScroll(rememberScrollState())) {
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) {
                 RowText("Sales ($todayCount)", "UGX %,d".format(todayTotal.toLong()), bold = true)
                 RowText("Cash sales", "UGX %,d".format(cashTotal.toLong()))
                 RowText("Mobile money", "UGX %,d".format(momoTotal.toLong()))
                 RowText("Credit sales", "UGX %,d".format(creditTotal.toLong()))
-                HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                Divider(Modifier.padding(vertical = 6.dp))
                 RowText("Expenses today", "-UGX %,d".format(expensesTotal.toLong()))
                 RowText("Expected cash in box", "UGX %,d".format(expectedCash.toLong()), bold = true)
                 Spacer(Modifier.height(8.dp))
                 Text("Count the physical cash. If it differs, the difference is "
                      + "recorded on paper reports only — no stock or books change.",
                     fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            },
+            } },
             confirmButton = {
                 Button(onClick = {
                     scope.launch {

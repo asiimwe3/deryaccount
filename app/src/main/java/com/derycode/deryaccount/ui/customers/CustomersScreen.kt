@@ -68,7 +68,7 @@ fun CustomersScreen(db: AppDatabase) {
                         }
                     }
                 )
-                HorizontalDivider()
+                Divider()
             }
         }
     }
@@ -88,12 +88,12 @@ private fun AddCustomerDialog(db: AppDatabase, onDone: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDone,
         title = { Text("Add Customer") },
-        text = Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
             OutlinedTextField(phone, { phone = it }, label = { Text("Phone (optional)") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
-        },
+        } },
         confirmButton = {
             Button(onClick = {
                 if (name.isBlank()) return@Button
@@ -120,13 +120,13 @@ private fun RepayDialog(db: AppDatabase, customer: Customer, onDone: () -> Unit)
     AlertDialog(
         onDismissRequest = onDone,
         title = { Text("Repayment — ${customer.name}") },
-        text = Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Owes: UGX %,d".format(customer.balance.toLong()), fontWeight = FontWeight.Bold)
             OutlinedTextField(amount, { amount = it }, label = { Text("Amount received (UGX)") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        },
+        } },
         confirmButton = {
             Button(onClick = {
                 val amt = amount.toDoubleOrNull()

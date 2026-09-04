@@ -1,3 +1,6 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.derycode.deryaccount.ui.expenses
 
 import androidx.compose.foundation.layout.*
@@ -77,7 +80,7 @@ fun ExpensesScreen(db: AppDatabase, branchId: String, userId: String) {
                             color = MaterialTheme.colorScheme.error)
                     }
                 )
-                HorizontalDivider()
+                Divider()
             }
         }
     }
@@ -118,7 +121,7 @@ private fun AddExpenseDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Record Expense") },
-        text = Column(Modifier.verticalScroll(rememberScrollState())) {
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             Text("Category", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 CATEGORIES.forEach { (cat, _) ->
@@ -152,7 +155,7 @@ private fun AddExpenseDialog(
                 }
             }
             error?.let { Spacer(Modifier.height(6.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
-        },
+        } },
         confirmButton = {
             Button(onClick = {
                 val amt = amount.toDoubleOrNull()
