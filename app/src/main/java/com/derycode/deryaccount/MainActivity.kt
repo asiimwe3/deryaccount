@@ -1,6 +1,7 @@
 package com.derycode.deryaccount
 
 import android.os.Bundle
+import androidx.compose.foundation.background
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -10,6 +11,8 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,6 +38,8 @@ import com.derycode.deryaccount.ui.shift.ShiftScreen
 import com.derycode.deryaccount.ui.books.BooksScreen
 import com.derycode.deryaccount.accounting.AccountingRepo
 import com.derycode.deryaccount.ui.settings.MoreScreen
+import com.derycode.deryaccount.ui.home.HomeScreen
+import com.derycode.deryaccount.ui.sales.SalesScreen
 import com.derycode.deryaccount.ui.theme.DeryAccountTheme
 import com.derycode.deryaccount.util.SessionManager
 import kotlinx.coroutines.flow.combine
@@ -140,6 +145,12 @@ fun DeryAccountApp() {
     }
 
     val (userId, branchId) = sessionState!!
+    var ownerName by remember { mutableStateOf("") }
+    var branchName by remember { mutableStateOf("Main Branch") }
+    LaunchedEffect(userId, branchId) {
+        try { db.userDao().get(userId)?.let { ownerName = it.fullName.split(" ").firstOrNull() ?: it.fullName } } catch (_: Exception) {}
+        try { db.branchDao().get(branchId)?.let { branchName = it.name } } catch (_: Exception) {}
+    }
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scopeDrawer = rememberCoroutineScope()
@@ -193,6 +204,10 @@ fun DeryAccountApp() {
     Scaffold(
         topBar = {
             TopAppBar(
+                colors = androidx.compose.material3.TopAppBarDefaults.topAppBarColors(
+                    containerColor = com.derycode.deryaccount.ui.theme.DaHeader,
+                    titleContentColor = com.derycode.deryaccount.ui.theme.DaTextPrimary,
+                    navigationIconContentColor = com.derycode.deryaccount.ui.theme.DaTextPrimary),
                 title = { Text(appTitle(currentRoute),
                     fontWeight = FontWeight.Bold) },
                 navigationIcon = {
@@ -203,30 +218,36 @@ fun DeryAccountApp() {
             )
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(containerColor = com.derycode.deryaccount.ui.theme.DaHeader) {
+                NavigationBarItem(
+                    selected = currentRoute == "home" || currentRoute == null,
+                    onClick = { navController.navigate("home") { launchSingleTop = true } },
+                    icon = { Icon(Icons.Default.Home, null) },
+                    label = { Text("Home") }
+                )
+                NavigationBarItem(
+                    selected = currentRoute == "sales",
+                    onClick = { navController.navigate("sales") { launchSingleTop = true } },
+                    icon = { Icon(Icons.Default.Receipt, null) },
+                    label = { Text("Sales") }
+                )
                 NavigationBarItem(
                     selected = currentRoute == "pos",
                     onClick = { navController.navigate("pos") { launchSingleTop = true } },
-                    icon = { Icon(Icons.Default.PointOfSale, null) },
+                    icon = {
+                        Box(
+                            Modifier.size(44.dp)
+                                .background(com.derycode.deryaccount.ui.theme.DaGreen, androidx.compose.foundation.shape.CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Default.Add, null, tint = Color(0xFF03150A)) }
+                    },
                     label = { Text("Sell") }
-                )
-                NavigationBarItem(
-                    selected = currentRoute == "inventory",
-                    onClick = { navController.navigate("inventory") { launchSingleTop = true } },
-                    icon = { Icon(Icons.Default.Inventory2, null) },
-                    label = { Text("Stock") }
                 )
                 NavigationBarItem(
                     selected = currentRoute == "reports",
                     onClick = { navController.navigate("reports") { launchSingleTop = true } },
                     icon = { Icon(Icons.Default.BarChart, null) },
                     label = { Text("Reports") }
-                )
-                NavigationBarItem(
-                    selected = currentRoute == "books",
-                    onClick = { navController.navigate("books") { launchSingleTop = true } },
-                    icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, null) },
-                    label = { Text("Books") }
                 )
                 NavigationBarItem(
                     selected = currentRoute == "more",
@@ -239,9 +260,16 @@ fun DeryAccountApp() {
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = "pos",
+            startDestination = "home",
             modifier = Modifier.padding(padding)
         ) {
+            composable("home") {
+                HomeScreen(db, branchId, ownerName.ifBlank { "Owner" }, branchName,
+                    onNavigate = { route -> navController.navigate(route) { launchSingleTop = true } })
+            }
+            composable("sales") {
+                SalesScreen(db, branchId)
+            }
             composable("pos") {
                 val vm: PosViewModel = viewModel(
                     factory = PosViewModel.Factory(db, branchId, userId, context)
@@ -281,6 +309,8 @@ fun DeryAccountApp() {
 
 /** Screen titles for the top bar. */
 private fun appTitle(route: String?): String = when (route) {
+    "home" -> "DeryAccount"
+    "sales" -> "Sales — Today"
     "pos" -> "DeryAccount — Sell"
     "inventory" -> "Stock"
     "books" -> "Books of Account"

@@ -1,46 +1,42 @@
 package com.derycode.deryaccount.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// DeryCode/DeryAccount palette — forest green + deep navy, UGX-friendly
-val Forest = Color(0xFF1A6B3C)
-val ForestDark = Color(0xFF0A3D1F)
-val Mint = Color(0xFF4ADE80)
-val Navy = Color(0xFF0F172A)
-val Amber = Color(0xFFF5C842)
-val Danger = Color(0xFFDC2626)
+// DeryAccount dark palette — near-black + forest green, matches app design
+val DaBlack = Color(0xFF06100B)          // page background
+val DaSurface = Color(0xFF0D1F15)        // cards
+val DaSurface2 = Color(0xFF122A1C)       // slightly lighter cards / chips
+val DaHeader = Color(0xFF0E3B22)         // top app bar / bottom nav
+val DaGreen = Color(0xFF22C55E)          // primary accent, positive amounts
+val DaGreenDeep = Color(0xFF16A34A)
+val DaRed = Color(0xFFEF4444)            // expenses / payments / negative
+val DaBlue = Color(0xFF3B82F6)
+val DaAmber = Color(0xFFF59E0B)
+val DaTextPrimary = Color(0xFFEAF3EC)
+val DaTextMuted = Color(0xFFB9C6BE)
+val DaOutline = Color(0xFF1E3A28)
 
-private val LightColors = lightColorScheme(
-    primary = Forest,
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFDCFCE7),
-    onPrimaryContainer = ForestDark,
-    secondary = Navy,
-    surface = Color(0xFFF8FAFC),
-    background = Color(0xFFF8FAFC),
-    error = Danger
+private val DaColors = darkColorScheme(
+    primary = DaGreen,
+    onPrimary = Color(0xFF03150A),
+    primaryContainer = DaSurface2,
+    onPrimaryContainer = DaGreen,
+    secondary = DaBlue,
+    background = DaBlack,
+    onBackground = DaTextPrimary,
+    surface = DaSurface,
+    onSurface = DaTextPrimary,
+    surfaceVariant = DaSurface2,
+    onSurfaceVariant = DaTextMuted,
+    outline = DaOutline,
+    error = DaRed
 )
 
-private val DarkColors = darkColorScheme(
-    primary = Mint,
-    onPrimary = ForestDark,
-    primaryContainer = ForestDark,
-    onPrimaryContainer = Mint,
-    secondary = Color(0xFF94A3B8),
-    surface = Color(0xFF111827),
-    background = Color(0xFF0B1220),
-    error = Color(0xFFF87171)
-)
-
+/** DeryAccount is always dark — matches the app's fixed enterprise POS look. */
 @Composable
-fun DeryAccountTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
-        content = content
-    )
+fun DeryAccountTheme(darkTheme: Boolean = true, content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = DaColors, content = content)
 }

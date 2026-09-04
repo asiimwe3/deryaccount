@@ -93,3 +93,15 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
 - Most common real-world cause: phone storage fills up (app saves a PDF
   receipt per sale). New startup warning appears when space is low
 - Exact error details always logged to DeryAccount/crashes for support
+
+## v0.6.0 — enterprise dark redesign
+- Fixed dark theme (near-black + forest green) across the whole app
+- New Home dashboard: greeting, Total Cash, Today's Sales, Stock Value,
+  Today's Expenses — live from the database, no sample data
+- Quick actions (New Sale, Add Expense, Add Stock, Cash Book) + Books grid
+- New Sales screen: today's sales list with totals, tap for full receipt
+  breakdown (items, qty, price, amount, total)
+- Cash/Petty/Bank books restyled: opening balance card, ruled table with
+  receipts/payments columns + running BALANCE column, totals row,
+  closing balance card, separate New Receipt / New Payment buttons
+- Bottom nav: Home | Sales | (+ Sell) | Reports | More

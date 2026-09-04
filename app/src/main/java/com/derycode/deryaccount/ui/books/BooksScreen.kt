@@ -2,6 +2,7 @@
 
 package com.derycode.deryaccount.ui.books
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -92,9 +93,17 @@ private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo, context: an
     LaunchedEffect(bookCode) { reload() }
 
     val cashBooks = accounts.filter { it.isCash }
-    val bookName = cashBooks.firstOrNull { it.code == bookCode }?.name?.uppercase() ?: "CASH BOOK"
+    val bookName = cashBooks.firstOrNull { it.code == bookCode }?.name ?: "Cash Book"
+    val totalReceipts = rows.filter { it.effect > 0 }.sumOf { it.effect }
+    val totalPayments = rows.filter { it.effect < 0 }.sumOf { -it.effect }
+    val closing = opening + rows.sumOf { it.effect }
+    val da = com.derycode.deryaccount.ui.theme.DaGreen
+    val red = com.derycode.deryaccount.ui.theme.DaRed
+    val surf = com.derycode.deryaccount.ui.theme.DaSurface
+    val text = com.derycode.deryaccount.ui.theme.DaTextPrimary
+    val muted = com.derycode.deryaccount.ui.theme.DaTextMuted
 
-    Column(Modifier.fillMaxSize().padding(8.dp)) {
+    Column(Modifier.fillMaxSize().background(com.derycode.deryaccount.ui.theme.DaBlack).padding(10.dp)) {
         // Book selector — Cash Book / Petty Cash Book / Bank & MoMo Book
         if (cashBooks.size > 1) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -102,39 +111,62 @@ private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo, context: an
                 cashBooks.forEach { b ->
                     FilterChip(selected = bookCode == b.code,
                         onClick = { bookCode = b.code },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = da, selectedLabelColor = Color(0xFF03150A),
+                            containerColor = surf, labelColor = muted),
                         label = { Text(b.name, fontSize = 12.sp) })
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
         }
-        Surface(Modifier.fillMaxWidth(), tonalElevation = 2.dp,
-            shape = MaterialTheme.shapes.medium) {
-            Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.SpaceBetween,
+        Surface(Modifier.fillMaxWidth(), color = surf,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)) {
+            Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
-                Column {
-                    Text("$bookName — THIS MONTH", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text("Opening B/F: ${fmt(opening)}", fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Text(fmt(opening + rows.sumOf { it.effect }),
-                    fontWeight = FontWeight.ExtraBold, fontSize = 18.sp,
-                    color = MaterialTheme.colorScheme.primary)
+                Text("Opening Balance", fontSize = 13.sp, color = muted)
+                Text(fmt(opening), fontWeight = FontWeight.Bold, fontSize = 15.sp, color = text)
             }
         }
+        Spacer(Modifier.height(8.dp))
+
+        BookTable(Modifier.weight(1f), rows, opening)
         Spacer(Modifier.height(6.dp))
 
-        BookTable(Modifier.weight(1f), rows)
-        Spacer(Modifier.height(6.dp))
+        Surface(Modifier.fillMaxWidth(), color = surf, shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("TOTAL", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = muted)
+                Text(fmt(totalReceipts), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = da)
+                Text(fmt(totalPayments), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = red)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Surface(Modifier.fillMaxWidth(), color = surf,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)) {
+            Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("Closing Balance", fontSize = 13.sp, color = muted)
+                Text(fmt(closing), fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = da)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { showEntryDialog = true },
-                modifier = Modifier.weight(1f).height(56.dp)) {
+                colors = ButtonDefaults.buttonColors(containerColor = da, contentColor = Color(0xFF03150A)),
+                modifier = Modifier.weight(1f).height(52.dp)) {
                 Icon(Icons.Default.Add, null)
-                Text("  New Entry", fontWeight = FontWeight.Bold)
+                Text("  New Receipt", fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(onClick = { showEntryDialog = true },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = red),
+                border = androidx.compose.foundation.BorderStroke(1.dp, red),
+                modifier = Modifier.weight(1f).height(52.dp)) {
+                Icon(Icons.Default.Add, null)
+                Text("  New Payment", fontWeight = FontWeight.Bold)
             }
             OutlinedButton(onClick = { printBook(context, bookName, opening, rows) },
-                modifier = Modifier.height(56.dp)) {
+                modifier = Modifier.height(52.dp)) {
                 Icon(Icons.Default.Print, null)
             }
         }
@@ -148,33 +180,59 @@ private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo, context: an
 
 /** Ruled cashbook table — shared by Cash Book and Ledger. */
 @Composable
-private fun BookTable(modifier: Modifier = Modifier, rows: List<BookRow>) {
-    Column(modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-        Row(Modifier.width(600.dp).padding(vertical = 6.dp)) {
-            Text("DATE", Modifier.weight(0.7f), fontWeight = FontWeight.Bold, fontSize = 11.sp)
-            Text("VCHR", Modifier.weight(0.5f), fontWeight = FontWeight.Bold, fontSize = 11.sp)
-            Text("PARTICULARS", Modifier.weight(1.9f), fontWeight = FontWeight.Bold, fontSize = 11.sp)
-            Text("RECEIPT", Modifier.weight(0.8f), fontWeight = FontWeight.Bold, fontSize = 11.sp)
-            Text("PAYMENT", Modifier.weight(0.8f), fontWeight = FontWeight.Bold, fontSize = 11.sp)
-        }
-        Divider()
-        LazyColumn {
-            if (rows.isEmpty()) item {
-                Text("No entries yet. Tap New Entry to record money received or paid.",
-                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 10.dp))
+private fun BookTable(modifier: Modifier = Modifier, rows: List<BookRow>, opening: Double = 0.0) {
+    val da = com.derycode.deryaccount.ui.theme.DaGreen
+    val red = com.derycode.deryaccount.ui.theme.DaRed
+    val muted = com.derycode.deryaccount.ui.theme.DaTextMuted
+    val text = com.derycode.deryaccount.ui.theme.DaTextPrimary
+    val outline = com.derycode.deryaccount.ui.theme.DaOutline
+    // running balance, oldest first, then re-reverse for display (rows come newest-first)
+    val chronological = rows.reversed()
+    var running = opening
+    val withBalance = chronological.map { e -> running += e.effect; e to running }.reversed()
+
+    Surface(modifier.fillMaxWidth(), color = com.derycode.deryaccount.ui.theme.DaSurface,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp)) {
+        Column(Modifier.horizontalScroll(rememberScrollState())) {
+            Row(Modifier.width(650.dp).padding(horizontal = 10.dp, vertical = 8.dp)) {
+                Text("DATE", Modifier.weight(0.65f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
+                Text("VOUCHER", Modifier.weight(0.6f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
+                Text("PARTICULARS", Modifier.weight(1.7f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
+                Text("RECEIPTS (UGX)", Modifier.weight(0.85f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
+                Text("PAYMENTS (UGX)", Modifier.weight(0.85f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
+                Text("BALANCE", Modifier.weight(0.85f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
             }
-            items(rows) { e ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                    Text(shortDate(e.date), Modifier.weight(0.7f), fontSize = 12.sp)
-                    Text(e.voucher, Modifier.weight(0.5f), fontSize = 11.sp)
-                    Text(e.particulars, Modifier.weight(1.9f), fontSize = 12.sp, maxLines = 2)
-                    Text(if (e.effect > 0) fmt(e.effect) else "", Modifier.weight(0.8f),
-                        fontSize = 12.sp, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
-                    Text(if (e.effect < 0) fmt(-e.effect) else "", Modifier.weight(0.8f),
-                        fontSize = 12.sp, color = Color(0xFFC62828), fontWeight = FontWeight.Bold)
+            Divider(color = outline)
+            LazyColumn(Modifier.width(650.dp)) {
+                item {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
+                        Text("—", Modifier.weight(0.65f), fontSize = 11.sp, color = text)
+                        Text("—", Modifier.weight(0.6f), fontSize = 11.sp, color = text)
+                        Text("Balance b/f", Modifier.weight(1.7f), fontSize = 11.sp, color = text, fontWeight = FontWeight.SemiBold)
+                        Text("", Modifier.weight(0.85f), fontSize = 11.sp)
+                        Text("", Modifier.weight(0.85f), fontSize = 11.sp)
+                        Text(fmt(opening), Modifier.weight(0.85f), fontSize = 11.sp, color = text, fontWeight = FontWeight.Bold)
+                    }
+                    Divider(color = outline.copy(alpha = 0.5f))
                 }
-                Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                if (rows.isEmpty()) item {
+                    Text("No entries yet. Tap New Entry to record money received or paid.",
+                        fontSize = 12.sp, color = muted,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp))
+                }
+                items(withBalance) { (e, bal) ->
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp)) {
+                        Text(shortDate(e.date), Modifier.weight(0.65f), fontSize = 11.sp, color = text)
+                        Text(e.voucher, Modifier.weight(0.6f), fontSize = 10.sp, color = muted)
+                        Text(e.particulars, Modifier.weight(1.7f), fontSize = 11.sp, color = text, maxLines = 2)
+                        Text(if (e.effect > 0) fmt(e.effect) else "", Modifier.weight(0.85f),
+                            fontSize = 11.sp, color = da, fontWeight = FontWeight.Bold)
+                        Text(if (e.effect < 0) fmt(-e.effect) else "", Modifier.weight(0.85f),
+                            fontSize = 11.sp, color = red, fontWeight = FontWeight.Bold)
+                        Text(fmt(bal), Modifier.weight(0.85f), fontSize = 11.sp, color = text, fontWeight = FontWeight.SemiBold)
+                    }
+                    Divider(color = outline.copy(alpha = 0.4f))
+                }
             }
         }
     }
