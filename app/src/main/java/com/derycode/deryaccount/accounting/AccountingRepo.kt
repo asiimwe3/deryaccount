@@ -124,13 +124,15 @@ class AccountingRepo(private val db: AppDatabase) {
     }
 
     /** POS sale posting: Dr cash/bank/debtors, Cr sales. */
-    suspend fun postSale(amount: Double, method: String, receiptNo: String) {
+    suspend fun postSale(amount: Double, method: String, receiptNo: String,
+                        itemCount: Int = 0) {
         val debitAccount = when (method) {
             "MTN_MOMO", "AIRTEL_MONEY" -> BANK
             "CREDIT" -> DEBTORS
             else -> CASH
         }
-        post(particulars = "Sales per receipt $receiptNo", source = "POS",
+        val detail = if (itemCount > 0) "$itemCount item${if (itemCount == 1) "" else "s"}" else "sale"
+        post(particulars = "Sales — $detail ($receiptNo)", source = "POS",
             debits = listOf(debitAccount to amount), credits = listOf(SALES to amount))
     }
 

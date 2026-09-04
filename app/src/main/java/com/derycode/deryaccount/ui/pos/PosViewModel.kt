@@ -178,7 +178,8 @@ class PosViewModel(
                 try {
                     com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
                         ensureSeeded()
-                        postSale(result.sale.total, result.sale.paymentMethod, result.sale.receiptNo)
+                        postSale(result.sale.total, result.sale.paymentMethod,
+                            result.sale.receiptNo, result.items.size)
                     }
                 } catch (_: Exception) { /* sale already saved; ledger retryable later */ }
                 // Save receipt to the on-device DeryAccount folder — safe even offline
