@@ -199,8 +199,19 @@ class PosViewModel(
                             st.cart.sumOf { it.qty * it.product.costPrice })
                     }
                 } catch (_: Exception) { /* sale already saved; ledger retryable later */ }
-                // Save receipt to the on-device DeryAccount folder — safe even offline
-                val shopName = db.branchDao().get(branchId)?.name ?: "My Shop"
+                // Business profile: the shop's own name & details on the receipt
+                val profile = try {
+                    com.derycode.deryaccount.util.SessionManager(appContext).businessProfileNow()
+                } catch (_: Exception) { null }
+                val branch = db.branchDao().get(branchId)
+                val header = com.derycode.deryaccount.util.EscPosPrinter.BizHeader(
+                    name = profile?.name?.ifBlank { null } ?: branch?.name ?: "My Shop",
+                    tagline = profile?.tagline ?: "",
+                    phone = profile?.phone ?: "",
+                    location = profile?.location ?: branch?.location ?: "",
+                    tin = profile?.tin ?: "",
+                    footer = profile?.footer ?: "Thank you! Karibu tena!")
+                val shopName = header.name
                 var pdfPath: String? = null
                 try {
                     val txt = com.derycode.deryaccount.util.DeviceStore.buildReceiptText(
@@ -217,7 +228,7 @@ class PosViewModel(
                         appContext, shopName, result.sale.receiptNo,
                         result.items.map { Triple(it.name, it.qty, it.lineTotal) },
                         result.sale.total, result.sale.amountPaid,
-                        result.sale.changeGiven, result.sale.paymentMethod)
+                        result.sale.changeGiven, result.sale.paymentMethod, header)
                     pdfPath = pdf.absolutePath
                 } catch (_: Exception) { /* PDF optional; sale already saved */ }
                 _uiState.update {
@@ -232,9 +243,19 @@ class PosViewModel(
     fun printReceipt() {
         val receipt = _uiState.value.lastReceipt ?: return
         viewModelScope.launch {
+            val profile = try {
+                com.derycode.deryaccount.util.SessionManager(appContext).businessProfileNow()
+            } catch (_: Exception) { null }
             val branch = db.branchDao().get(branchId)
+            val header = com.derycode.deryaccount.util.EscPosPrinter.BizHeader(
+                name = profile?.name?.ifBlank { null } ?: branch?.name ?: "My Shop",
+                tagline = profile?.tagline ?: "",
+                phone = profile?.phone ?: "",
+                location = profile?.location ?: branch?.location ?: "",
+                tin = profile?.tin ?: "",
+                footer = profile?.footer ?: "Thank you! Karibu tena!")
             val printer = EscPosPrinter(appContext)
-            val ok = printer.printBluetooth(branch, receipt.sale, receipt.items)
+            val ok = printer.printBluetooth(header, receipt.sale, receipt.items)
             _uiState.update {
                 it.copy(lastReceipt = receipt.copy(printed =
                     if (ok) "Sent to Bluetooth printer ✓"

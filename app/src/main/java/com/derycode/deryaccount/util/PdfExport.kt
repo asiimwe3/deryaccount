@@ -80,10 +80,18 @@ object PdfExport {
 
     fun receiptPdf(context: Context, shopName: String, receiptNo: String,
                   items: List<Triple<String, Double, Double>>,
-                  total: Double, paid: Double, change: Double, method: String): File {
+                  total: Double, paid: Double, change: Double, method: String,
+                  header: com.derycode.deryaccount.util.EscPosPrinter.BizHeader? = null): File {
+        val biz = header
         val lines = buildList {
-            add(Line(shopName, 13f, true))
-            add(Line("RECEIPT: $receiptNo", 10f, true))
+            add(Line(biz?.name?.ifBlank { null } ?: shopName, 13f, true))
+            biz?.tagline?.takeIf { it.isNotBlank() }?.let { add(Line(it, 9f, color = Color.GRAY)) }
+            if (biz != null) {
+                if (biz.location.isNotBlank()) add(Line(biz.location, 9f))
+                if (biz.phone.isNotBlank()) add(Line("Tel: ${biz.phone}", 9f))
+                if (biz.tin.isNotBlank()) add(Line("TIN: ${biz.tin}", 9f))
+            }
+            add(Line("RECEIPT No: $receiptNo", 10f, true))
             add(Line("-".repeat(60), 9f))
             items.forEach { (n, q, t) ->
                 add(Line("%-28s x%-6.1f %,11.0f".format(n.take(28), q, t), 10f, indent = 4))
@@ -92,7 +100,7 @@ object PdfExport {
             add(Line("TOTAL:        UGX %,d".format(total.toLong()), 13f, true))
             add(Line("Paid ($method): UGX %,d".format(paid.toLong()), 10f))
             if (change > 0) add(Line("CHANGE:       UGX %,d".format(change.toLong()), 10f, true))
-            add(Line("Thank you for your business!", 10f, color = Color.GRAY))
+            add(Line(biz?.footer?.ifBlank { null } ?: "Thank you for your business!", 10f, color = Color.GRAY))
         }
         val safe = receiptNo.replace(Regex("[^A-Za-z0-9\\-]"), "_")
         return render(context, "receipt_$safe.pdf", "Receipt — $receiptNo", lines)

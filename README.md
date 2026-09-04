@@ -79,3 +79,10 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   downloads + installs in-app — no more manual APK downloads
 - Crash safety net: any unexpected crash is logged to DeryAccount/crashes on
   the device; updater and scanner failures never crash the app
+
+## v0.5.1 — business profiles & branded receipts
+- Settings → Business profile: business name, tagline, phone, location, TIN,
+  and a custom thank-you message
+- Every receipt (thermal print, PDF, saved text) is printed in the shop's own
+  name with its details and its sequential receipt number
+  (e.g. DER-20260904-0007 = business code, date, sale of the day)

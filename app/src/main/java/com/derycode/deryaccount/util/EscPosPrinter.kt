@@ -26,16 +26,34 @@ class EscPosPrinter(private val context: Context) {
     /** 58mm printers (most common cheap UG market ones): 32 chars/line. */
     private val width = 32
 
-    fun buildReceiptBytes(branch: Branch?, sale: Sale, items: List<SaleItem>): ByteArray {
+/** The shop's identity as printed at the top of every receipt. */
+    data class BizHeader(
+        val name: String,
+        val tagline: String = "",
+        val phone: String = "",
+        val location: String = "",
+        val tin: String = "",
+        val footer: String = "Thank you! Karibu tena!"
+    ) {
+        companion object {
+            fun fromProfile(p: com.derycode.deryaccount.util.SessionManager.BusinessProfile) =
+                BizHeader(p.name, p.tagline, p.phone, p.location, p.tin,
+                    p.footer.ifBlank { "Thank you! Karibu tena!" })
+        }
+    }
+
+    fun buildReceiptBytes(header: BizHeader, sale: Sale, items: List<SaleItem>): ByteArray {
         val out = ByteArrayOutputStream()
         out.write(0x1B); out.write(0x40)            // init printer
         out.write(0x1B); out.write(0x61); out.write(1) // center
 
-        out.write(text("${branch?.name ?: "SAGECO SHOP"}\n", true, 1))
-        out.write(text("${branch?.location ?: ""}\n"))
-        out.write(text("Tel: +256-xxx-xxx\n"))
+        out.write(text("${header.name.ifBlank { "MY SHOP" }}\n", true, 1))
+        if (header.tagline.isNotBlank()) out.write(text("${header.tagline}\n"))
+        if (header.location.isNotBlank()) out.write(text("${header.location}\n"))
+        if (header.phone.isNotBlank()) out.write(text("Tel: ${header.phone}\n"))
+        if (header.tin.isNotBlank()) out.write(text("TIN: ${header.tin}\n"))
         out.write(text("------------------------------\n"))
-        out.write(text("RECEIPT: ${sale.receiptNo}\n"))
+        out.write(text("RECEIPT: ${sale.receiptNo}\n", true))
         val fmt = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US)
         out.write(text("Date: ${fmt.format(java.util.Date())}\n"))
         out.write(text("------------------------------\n"))
@@ -54,7 +72,7 @@ class EscPosPrinter(private val context: Context) {
         if (sale.changeGiven > 0) out.write(line("Change:", fmtMoney(sale.changeGiven)))
 
         out.write(text("\n------------------------------\n"))
-        out.write(text("Thank you! Karibu tena!\n"))
+        out.write(text("${header.footer}\n"))
         out.write(0x1B); out.write(0x61); out.write(1)
         out.write(text("Powered by DeryAccount\n"))
         out.write(text("\n\n\n"))
@@ -63,10 +81,11 @@ class EscPosPrinter(private val context: Context) {
     }
 
     /** Build a simple canvas bitmap of the receipt for the Android print framework. */
-    fun buildReceiptBitmap(branch: Branch?, sale: Sale, items: List<SaleItem>): Bitmap {
+    fun buildReceiptBitmap(header: BizHeader, sale: Sale, items: List<SaleItem>): Bitmap {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 26f }
         val lines = buildList {
-            add(branch?.name ?: "SHOP")
+            add(header.name.ifBlank { "SHOP" })
+            if (header.phone.isNotBlank()) add("Tel: ${header.phone}")
             add("Receipt: ${sale.receiptNo}")
             add("--------------------------------")
             items.forEach { add("${it.name.take(20)} x${fmtQty(it.qty)}  ${fmtMoney(it.lineTotal)}") }
@@ -87,7 +106,7 @@ class EscPosPrinter(private val context: Context) {
 
     /** Send to a paired printer whose name contains "print" (case-insensitive). */
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    fun printBluetooth(branch: Branch?, sale: Sale, items: List<SaleItem>): Boolean {
+    fun printBluetooth(header: BizHeader, sale: Sale, items: List<SaleItem>): Boolean {
         return try {
             val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
             val adapter: BluetoothAdapter = bm.adapter ?: return false
@@ -100,7 +119,7 @@ class EscPosPrinter(private val context: Context) {
             adapter.cancelDiscovery()
             socket.connect()
             socket.outputStream.use { os ->
-                os.write(buildReceiptBytes(branch, sale, items))
+                os.write(buildReceiptBytes(header, sale, items))
                 os.flush()
             }
             socket.close()

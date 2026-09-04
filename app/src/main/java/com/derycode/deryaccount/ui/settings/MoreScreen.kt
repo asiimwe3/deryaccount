@@ -29,6 +29,8 @@ fun MoreScreen(
     onLogout: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    var showProfile by remember { mutableStateOf(false) }
+    if (showProfile) BusinessProfileDialog(session, onDone = { showProfile = false })
     var syncMsg by remember { mutableStateOf<String?>(null) }
     var sbUrl by remember { mutableStateOf("") }
     var sbKey by remember { mutableStateOf("") }
@@ -49,6 +51,28 @@ fun MoreScreen(
         Spacer(Modifier.height(16.dp))
 
         Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(12.dp))
+
+        // ---- Business profile: the shop's identity on receipts ----
+        val profileName = session.businessProfile
+            .collectAsState(initial = null).value?.name
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Business profile", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    (if (profileName.isNullOrBlank())
+                        "Add your business name, phone and location — printed on every receipt."
+                    else "Receipts are printed as $profileName")
+                        + " with your own receipt numbers.",
+                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = { showProfile = true }) {
+                    Text(if (profileName.isNullOrBlank()) "Create business profile" else "Edit business profile")
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
 
         // ---- On-device safe storage ----
         Card(Modifier.fillMaxWidth()) {

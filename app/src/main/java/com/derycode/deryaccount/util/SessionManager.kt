@@ -27,10 +27,47 @@ class SessionManager(private val context: Context) {
         val KEY_SB_URL = stringPreferencesKey("supabase_url")
         val KEY_SB_KEY = stringPreferencesKey("supabase_anon_key")
         val KEY_TUTORIAL_DONE = stringPreferencesKey("tutorial_done")
+        val KEY_BIZ_NAME = stringPreferencesKey("biz_name")
+        val KEY_BIZ_TAGLINE = stringPreferencesKey("biz_tagline")
+        val KEY_BIZ_PHONE = stringPreferencesKey("biz_phone")
+        val KEY_BIZ_LOCATION = stringPreferencesKey("biz_location")
+        val KEY_BIZ_TIN = stringPreferencesKey("biz_tin")
+        val KEY_BIZ_FOOTER = stringPreferencesKey("biz_footer")
 
         fun sha256(s: String): String =
             MessageDigest.getInstance("SHA-256").digest(s.toByteArray())
                 .joinToString("") { "%02x".format(it) }
+    }
+
+    /** The shop's own identity — printed on every receipt. */
+    data class BusinessProfile(
+        val name: String = "",
+        val tagline: String = "",
+        val phone: String = "",
+        val location: String = "",
+        val tin: String = "",
+        val footer: String = "Thank you for shopping with us!"
+    )
+
+    val businessProfile: Flow<BusinessProfile?> = context.dataStore.data.map {
+        val n = it[KEY_BIZ_NAME]
+        if (n.isNullOrBlank()) null else BusinessProfile(
+            name = n, tagline = it[KEY_BIZ_TAGLINE] ?: "",
+            phone = it[KEY_BIZ_PHONE] ?: "", location = it[KEY_BIZ_LOCATION] ?: "",
+            tin = it[KEY_BIZ_TIN] ?: "", footer = it[KEY_BIZ_FOOTER] ?: "Thank you for shopping with us!")
+    }
+
+    suspend fun businessProfileNow(): BusinessProfile? = businessProfile.first()
+
+    suspend fun saveBusinessProfile(profile: BusinessProfile) {
+        context.dataStore.edit {
+            it[KEY_BIZ_NAME] = profile.name
+            it[KEY_BIZ_TAGLINE] = profile.tagline
+            it[KEY_BIZ_PHONE] = profile.phone
+            it[KEY_BIZ_LOCATION] = profile.location
+            it[KEY_BIZ_TIN] = profile.tin
+            it[KEY_BIZ_FOOTER] = profile.footer
+        }
     }
 
     val userId: Flow<String?> = context.dataStore.data.map { it[KEY_USER] }
