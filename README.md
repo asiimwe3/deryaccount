@@ -39,3 +39,11 @@ Chart of accounts (1000 Cash, 1001 Petty Cash, 1010 Bank/MoMo, 1100 Debtors,
 5000 Cost of Sales, 5100 Purchases, 5200–5900 expense accounts).
 
 Every POS sale posts automatically: Dr Cash/Bank/Debtors, Cr Sales.
+
+## Quick Stock Setup (v0.3)
+Adding stock now starts with a business category picker:
+General Shop, Supermarket, Hardware, Pharmacy, Agro-Vet, Butchery, Salon,
+Stationery, Bar & Restaurant, Mobile Money & Airtime.
+Each category ships with a ready list of 20–36 common Ugandan items (with
+typical prices). The owner ticks items, edits price, enters opening stock,
+and adds everything in one tap — opening stock is recorded as a purchase.

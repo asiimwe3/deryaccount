@@ -76,7 +76,13 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
         }
     }
 
-    if (showAdd) AddProductDialog(db, branchId, onDone = { showAdd = false })
+    var manualAdd by remember { mutableStateOf(false) }
+    if (showAdd) QuickAddStockDialog(
+        db, branchId,
+        onDone = { showAdd = false },
+        onManualAdd = { showAdd = false; manualAdd = true }
+    )
+    if (manualAdd) AddProductDialog(db, branchId, onDone = { manualAdd = false })
 }
 
 @Composable
