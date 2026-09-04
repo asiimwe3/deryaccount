@@ -105,3 +105,9 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   receipts/payments columns + running BALANCE column, totals row,
   closing balance card, separate New Receipt / New Payment buttons
 - Bottom nav: Home | Sales | (+ Sell) | Reports | More
+
+## v0.6.1 — post-redesign audit fixes
+- "New Payment" button now opens the entry dialog in Paid-out mode
+  (previously both buttons opened in Received mode)
+- Ledger running balance now starts from the true opening balance
+- Home card relabeled "Cash & Bank" (it sums Cash + Petty + Bank/MoMo)

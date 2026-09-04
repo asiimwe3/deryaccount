@@ -78,6 +78,7 @@ private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo, context: an
     var accounts by remember { mutableStateOf(emptyList<Account>()) }
     var bookCode by remember { mutableStateOf("1000") }   // 1000 cash, 1001 petty, 1010 bank/momo
     var showEntryDialog by remember { mutableStateOf(false) }
+    var showPayment by remember { mutableStateOf(false) }
 
     suspend fun reload() {
         accounting.ensureSeeded()
@@ -158,7 +159,7 @@ private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo, context: an
                 Icon(Icons.Default.Add, null)
                 Text("  New Receipt", fontWeight = FontWeight.Bold)
             }
-            OutlinedButton(onClick = { showEntryDialog = true },
+            OutlinedButton(onClick = { showPayment = true },
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = red),
                 border = androidx.compose.foundation.BorderStroke(1.dp, red),
                 modifier = Modifier.weight(1f).height(52.dp)) {
@@ -175,6 +176,10 @@ private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo, context: an
     if (showEntryDialog) {
         NewEntryDialog(accounting, accounts,
             onDone = { showEntryDialog = false; scope.launch { reload() } })
+    }
+    if (showPayment) {
+        NewEntryDialog(accounting, accounts, initialReceipt = false,
+            onDone = { showPayment = false; scope.launch { reload() } })
     }
 }
 
@@ -246,10 +251,11 @@ private fun BookTable(modifier: Modifier = Modifier, rows: List<BookRow>, openin
 private fun NewEntryDialog(
     accounting: AccountingRepo,
     accounts: List<Account>,
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    initialReceipt: Boolean = true
 ) {
     val scope = rememberCoroutineScope()
-    var isReceipt by remember { mutableStateOf(true) }
+    var isReceipt by remember { mutableStateOf(initialReceipt) }
     var amount by remember { mutableStateOf("") }
     var particulars by remember { mutableStateOf("") }
     var cashAccountId by remember { mutableStateOf(AccountingRepo.CASH) }
@@ -378,7 +384,7 @@ private fun LedgerTab(db: AppDatabase, accounting: AccountingRepo, context: andr
             fontSize = 18.sp, fontWeight = FontWeight.ExtraBold,
             color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(4.dp))
-        BookTable(Modifier.weight(1f), rows)
+        BookTable(Modifier.weight(1f), rows, opening)
         OutlinedButton(onClick = { printBook(context, "Ledger", opening, rows) },
             modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.Print, null); Text("  Print / Save PDF")

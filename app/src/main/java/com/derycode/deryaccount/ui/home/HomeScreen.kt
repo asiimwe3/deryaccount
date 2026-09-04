@@ -84,7 +84,7 @@ fun HomeScreen(
 
         // ---- stat cards ----
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatCard(Modifier.weight(1f), "Total Cash", stats.totalCash, DaGreen, Icons.Default.AccountBalanceWallet, loading)
+            StatCard(Modifier.weight(1f), "Cash & Bank", stats.totalCash, DaGreen, Icons.Default.AccountBalanceWallet, loading)
             StatCard(Modifier.weight(1f), "Today's Sales", stats.todaySales, DaBlue, Icons.Default.PointOfSale, loading)
         }
         Spacer(Modifier.height(10.dp))
