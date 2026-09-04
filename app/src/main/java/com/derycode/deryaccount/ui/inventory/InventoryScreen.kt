@@ -13,6 +13,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.derycode.deryaccount.data.local.AppDatabase
+import com.derycode.deryaccount.util.PdfExport
 import com.derycode.deryaccount.data.local.entity.Product
 import kotlinx.coroutines.launch
 
@@ -22,6 +23,7 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun InventoryScreen(db: AppDatabase, branchId: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val products by db.productDao().observeBranchProducts(branchId)
         .collectAsState(initial = emptyList())
     var showAdd by remember { mutableStateOf(false) }
@@ -48,11 +50,22 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
                 leadingIcon = { Icon(Icons.Default.Search, null) }
             )
             Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("${filtered.size} products", fontWeight = FontWeight.Bold)
-                val low = products.count { it.stockQty <= it.lowStockAlert }
-                if (low > 0) Text("$low low on stock", color = MaterialTheme.colorScheme.error,
-                    fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("${filtered.size} products", fontWeight = FontWeight.Bold)
+                    val low = products.count { it.stockQty <= it.lowStockAlert }
+                    if (low > 0) Text("$low low on stock", color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Bold)
+                }
+                OutlinedButton(onClick = {
+                    val file = PdfExport.stockPdf(context, "My Shop",
+                        filtered.map { arrayOf(it.name, it.unit ?: "pcs",
+                            it.retailPrice.toString(), it.stockQty.toString()) })
+                    try { PdfExport.printPdf(context, file, "Stock Report") } catch (_: Exception) {}
+                }) {
+                    Icon(Icons.Default.Print, null); Text(" Print Stock")
+                }
             }
             Spacer(Modifier.height(4.dp))
 

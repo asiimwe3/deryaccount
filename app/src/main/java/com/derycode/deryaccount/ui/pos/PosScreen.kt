@@ -18,6 +18,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.derycode.deryaccount.data.local.entity.Product
+import com.derycode.deryaccount.util.PdfExport
+import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * PosScreen — designed for SPEED in a busy shop:
@@ -35,8 +38,43 @@ fun PosScreen(
     val ui by viewModel.uiState.collectAsState()
     val catalog by viewModel.catalog.collectAsState(initial = emptyList())
     var scanInput by remember { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var showBanner by remember { mutableStateOf(true) }
+    var showCalc by remember { mutableStateOf(false) }
+
+    // Auto-open the print dialog after EVERY sale (receipt saved as PDF too)
+    ui.lastReceipt?.pdfPath?.let { path ->
+        LaunchedEffect(path) {
+            try { PdfExport.printPdf(context, File(path), "Receipt") } catch (_: Exception) {}
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(8.dp)) {
+
+        // ---- Hero banner: free for the first 100 ----
+        if (showBanner) {
+            Surface(
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "FREE for the first 100 Ugandan businesses — every feature, 100% offline.",
+                        fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { showBanner = false }, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Close, "Close", modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
 
         // ---- Scan bar (the fastest path) ----
         OutlinedTextField(
@@ -51,11 +89,16 @@ fun PosScreen(
             }),
             leadingIcon = { Icon(Icons.Default.QrCodeScanner, null) },
             trailingIcon = {
-                FilterChip(
-                    selected = ui.saleType == "WHOLESALE",
-                    onClick = viewModel::toggleSaleType,
-                    label = { Text("Wholesale") }
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { showCalc = true }) {
+                        Icon(Icons.Default.Calculate, "Calculator")
+                    }
+                    FilterChip(
+                        selected = ui.saleType == "WHOLESALE",
+                        onClick = viewModel::toggleSaleType,
+                        label = { Text("Wholesale") }
+                    )
+                }
             }
         )
         Spacer(Modifier.height(6.dp))
@@ -141,6 +184,9 @@ fun PosScreen(
         }
     }
 
+    // ---- Calculator ----
+    if (showCalc) CalculatorDialog(onClose = { showCalc = false })
+
     // ---- Unknown barcode → instant product creation ----
     ui.unknownBarcode?.let { code ->
         QuickAddDialog(
@@ -163,6 +209,22 @@ fun PosScreen(
         ReceiptDialog(
             receipt = receipt,
             onPrint = { viewModel.printReceipt() },
+            onPdf = {
+                receipt.pdfPath?.let { path ->
+                    try { PdfExport.printPdf(context, File(path), "Receipt ${receipt.sale.receiptNo}") } catch (_: Exception) {}
+                }
+            },
+            onInvoice = {
+                scope.launch {
+                    try {
+                        val f = PdfExport.invoicePdf(
+                            context, receipt.shopName, receipt.sale.receiptNo, "Customer",
+                            receipt.items.map { Triple(it.name, it.qty, it.lineTotal) },
+                            receipt.sale.total)
+                        PdfExport.printPdf(context, f, "Invoice ${receipt.sale.receiptNo}")
+                    } catch (_: Exception) {}
+                }
+            },
             onDone = { viewModel.clearReceipt(); onSaleComplete(receipt.sale.receiptNo) }
         )
     }
@@ -221,6 +283,7 @@ private fun QuickAddDialog(barcode: String, onSave: (String, Double, Double) -> 
 @Composable
 private fun PaymentDialog(total: Double, method: String, onPay: (Double) -> Unit, onDismiss: () -> Unit) {
     var amount by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(method.replace("_", " ")) },
@@ -229,7 +292,7 @@ private fun PaymentDialog(total: Double, method: String, onPay: (Double) -> Unit
                 Text("Total: ${fmtMoney(total)}", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = amount, onValueChange = { amount = it },
+                    value = amount, onValueChange = { amount = it; error = null },
                     label = { Text("Amount received") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                 )
@@ -237,17 +300,26 @@ private fun PaymentDialog(total: Double, method: String, onPay: (Double) -> Unit
                 // quick note buttons — most common Ugandan notes, zero typing
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf(10000, 20000, 50000).forEach { note ->
-                        OutlinedButton(onClick = { amount = note.toString() }) {
+                        OutlinedButton(onClick = { amount = note.toString(); error = null }) {
                             Text("${note / 1000}k")
                         }
                     }
-                    OutlinedButton(onClick = { amount = total.toString() }) { Text("Exact") }
+                    OutlinedButton(onClick = { amount = total.toLong().toString(); error = null }) { Text("Exact") }
+                }
+                error?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
             }
         },
         confirmButton = {
             Button(onClick = {
-                amount.toDoubleOrNull()?.let { if (it >= total) onPay(it) }
+                val amt = amount.toDoubleOrNull()
+                when {
+                    amt == null || amt <= 0 -> error = "Enter the amount received"
+                    amt < total -> error = "Not enough — balance due ${fmtMoney(total - amt)}"
+                    else -> onPay(amt)
+                }
             }) { Text("Confirm") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
@@ -258,6 +330,8 @@ private fun PaymentDialog(total: Double, method: String, onPay: (Double) -> Unit
 private fun ReceiptDialog(
     receipt: PosViewModel.ReceiptUi,
     onPrint: () -> Unit,
+    onPdf: () -> Unit,
+    onInvoice: () -> Unit,
     onDone: () -> Unit
 ) {
     AlertDialog(
@@ -274,10 +348,113 @@ private fun ReceiptDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
-        confirmButton = { Button(onClick = onPrint) { Icon(Icons.Default.Print, null); Text("Print") } },
-        dismissButton = { TextButton(onClick = onDone) { Text("Done") } }
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onPdf) { Icon(Icons.Default.PictureAsPdf, null); Text(" PDF") }
+                TextButton(onClick = onInvoice) { Icon(Icons.Default.Receipt, null); Text(" Invoice") }
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Button(onClick = onPrint) { Icon(Icons.Default.Print, null); Text("Print") }
+                TextButton(onClick = onDone) { Text("Done") }
+            }
+        }
     )
 }
 
 private fun fmtMoney(v: Double): String = "UGX %,d".format(v.toLong())
 private fun fmtQty(q: Double): String = if (q % 1.0 == 0.0) q.toLong().toString() else "%.1f".format(q)
+
+
+// ----------------------------------------------------------------
+// CALCULATOR — shop math at the counter, big thumb-friendly keys
+// ----------------------------------------------------------------
+@Composable
+private fun CalculatorDialog(onClose: () -> Unit) {
+    var display by remember { mutableStateOf("0") }
+    var acc by remember { mutableStateOf(0.0) }   // accumulator
+    var pendingOp by remember { mutableStateOf<String?>(null) }
+    var fresh by remember { mutableStateOf(true) }  // next digit starts new number
+
+    fun inputDigit(d: String) {
+        display = if (fresh || display == "0") d else display + d
+        fresh = false
+    }
+    fun applyOp(op: String) {
+        val cur = display.toDoubleOrNull() ?: 0.0
+        if (pendingOp != null && !fresh) {
+            val r = when (pendingOp) {
+                "+" -> acc + cur; "-" -> acc - cur
+                "x" -> acc * cur
+                "÷" -> if (cur != 0.0) acc / cur else 0.0
+                else -> cur
+            }
+            acc = r
+            display = if (r == r.toLong().toDouble()) r.toLong().toString() else "%.2f".format(r)
+        } else acc = cur
+        pendingOp = op
+        fresh = true
+    }
+    fun equals() {
+        val cur = display.toDoubleOrNull() ?: 0.0
+        val r = when (pendingOp) {
+            "+" -> acc + cur; "-" -> acc - cur
+            "x" -> acc * cur
+            "÷" -> if (cur != 0.0) acc / cur else 0.0
+            else -> cur
+        }
+        display = if (r == r.toLong().toDouble()) r.toLong().toString() else "%.2f".format(r)
+        acc = 0.0; pendingOp = null; fresh = true
+    }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Calculator", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(horizontalAlignment = Alignment.End) {
+                Text(display, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Right)
+                Spacer(Modifier.height(8.dp))
+                val rows = listOf(
+                    listOf("7", "8", "9", "÷"),
+                    listOf("4", "5", "6", "x"),
+                    listOf("1", "2", "3", "-"),
+                    listOf("0", ".", "=", "+")
+                )
+                rows.forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()) {
+                        row.forEach { key ->
+                            val isOp = key in listOf("÷", "x", "-", "+", "=")
+                            if (isOp) FilledTonalButton(
+                                onClick = { if (key == "=") equals() else applyOp(key) },
+                                modifier = Modifier.weight(1f).height(52.dp)
+                            ) { Text(key, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+                            else OutlinedButton(
+                                onClick = {
+                                    if (key == ".") { if (fresh) { display = "0."; fresh = false }
+                                        else if (!display.contains(".")) display += "." }
+                                    else inputDigit(key)
+                                },
+                                modifier = Modifier.weight(1f).height(52.dp)
+                            ) { Text(key, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
+                        }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+                Row(Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = {
+                        display = "0"; acc = 0.0; pendingOp = null; fresh = true
+                    }, modifier = Modifier.weight(1f)) { Text("Clear") }
+                    Spacer(Modifier.width(8.dp))
+                    Button(onClick = onClose, modifier = Modifier.weight(1f)) { Text("Close") }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {}
+    )
+}

@@ -172,13 +172,16 @@ private fun ItemPicker(
                                 Text(ci.unit, fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            if (isSel) Row(
+                            Row(
                                 Modifier.padding(start = 46.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 OutlinedTextField(
                                     value = prices[i] ?: ci.price.toLong().toString(),
-                                    onValueChange = { prices[i] = it },
+                                    onValueChange = {
+                                        prices[i] = it
+                                        if (it.toDoubleOrNull() != null) selected = selected + i
+                                    },
                                     label = { Text("Price UGX", fontSize = 11.sp) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     singleLine = true,
@@ -186,7 +189,10 @@ private fun ItemPicker(
                                 )
                                 OutlinedTextField(
                                     value = qtys[i] ?: "",
-                                    onValueChange = { qtys[i] = it },
+                                    onValueChange = {
+                                        qtys[i] = it
+                                        if (it.toDoubleOrNull() != null) selected = selected + i
+                                    },
                                     label = { Text("Opening stock", fontSize = 11.sp) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     singleLine = true,
@@ -230,7 +236,7 @@ private fun ItemPicker(
                     val ci = catalog[i]
                     val pr = (prices[i] ?: ci.price.toString()).toDoubleOrNull()
                         ?: return@mapNotNull null
-                    val q = (qtys[i] ?: "").toDoubleOrNull() ?: 0.0
+                    val q = (qtys[i] ?: "0").toDoubleOrNull() ?: 0.0
                     Picked(BusinessCatalog.CatalogItem(ci.name, ci.unit, pr), q)
                 }
                 onAdd(chosen, customName,

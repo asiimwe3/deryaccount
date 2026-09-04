@@ -47,3 +47,14 @@ Stationery, Bar & Restaurant, Mobile Money & Airtime.
 Each category ships with a ready list of 20–36 common Ugandan items (with
 typical prices). The owner ticks items, edits price, enters opening stock,
 and adds everything in one tap — opening stock is recorded as a purchase.
+
+## v0.4 — Full books, printing, PDF
+- 12 business categories, 800+ catalog items with typical UGX prices
+- Price & stock fields always editable in the picker (auto-ticks on typing)
+- Payment dialog shows clear errors (no silent failures)
+- Calculator at the POS counter
+- Hero banner + side drawer navigation (free-for-100 message)
+- Balance Sheet added (Assets = Liabilities + Equity)
+- PDF engine: receipt auto-saved & auto-printed on every sale, invoices,
+  stock reports, and all books of account print via the Android system
+  print dialog (Bluetooth/wifi printers) or save as PDF in DeryAccount/documents

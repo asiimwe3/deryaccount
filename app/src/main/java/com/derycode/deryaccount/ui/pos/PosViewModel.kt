@@ -28,7 +28,8 @@ class PosViewModel(
         val lineTotal: Double get() = (qty * unitPrice * 100).roundToInt() / 100.0
     }
 
-    data class ReceiptUi(val sale: Sale, val items: List<SaleItem>, val printed: String?)
+    data class ReceiptUi(val sale: Sale, val items: List<SaleItem>, val printed: String?,
+                         val pdfPath: String? = null, val shopName: String = "My Shop")
 
     data class UiState(
         val cart: List<CartLineUi> = emptyList(),
@@ -175,15 +176,27 @@ class PosViewModel(
                 } catch (_: Exception) { /* sale already saved; ledger retryable later */ }
                 // Save receipt to the on-device DeryAccount folder — safe even offline
                 val shopName = db.branchDao().get(branchId)?.name ?: "My Shop"
-                val txt = com.derycode.deryaccount.util.DeviceStore.buildReceiptText(
-                    shopName, result.sale.receiptNo,
-                    result.items.map { Triple(it.name, it.qty, it.lineTotal) },
-                    result.sale.total, result.sale.amountPaid,
-                    result.sale.changeGiven, result.sale.paymentMethod)
-                com.derycode.deryaccount.util.DeviceStore.saveReceipt(
-                    appContext, result.sale.receiptNo, txt)
+                var pdfPath: String? = null
+                try {
+                    val txt = com.derycode.deryaccount.util.DeviceStore.buildReceiptText(
+                        shopName, result.sale.receiptNo,
+                        result.items.map { Triple(it.name, it.qty, it.lineTotal) },
+                        result.sale.total, result.sale.amountPaid,
+                        result.sale.changeGiven, result.sale.paymentMethod)
+                    com.derycode.deryaccount.util.DeviceStore.saveReceipt(
+                        appContext, result.sale.receiptNo, txt)
+                } catch (_: Exception) { /* receipt text is optional */ }
+                // Every sale also produces a printable PDF receipt
+                try {
+                    val pdf = com.derycode.deryaccount.util.PdfExport.receiptPdf(
+                        appContext, shopName, result.sale.receiptNo,
+                        result.items.map { Triple(it.name, it.qty, it.lineTotal) },
+                        result.sale.total, result.sale.amountPaid,
+                        result.sale.changeGiven, result.sale.paymentMethod)
+                    pdfPath = pdf.absolutePath
+                } catch (_: Exception) { /* PDF optional; sale already saved */ }
                 _uiState.update {
-                    UiState(lastReceipt = ReceiptUi(result.sale, result.items, null))
+                    UiState(lastReceipt = ReceiptUi(result.sale, result.items, null, pdfPath, shopName))
                 }
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = "Checkout failed: ${e.message}") }

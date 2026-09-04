@@ -10,6 +10,9 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -81,7 +84,67 @@ fun DeryAccountApp() {
 
     val (userId, branchId) = sessionState!!
 
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scopeDrawer = rememberCoroutineScope()
+    val drawerItems = listOf(
+        Triple("pos", "Sell / POS", Icons.Default.PointOfSale),
+        Triple("inventory", "Stock", Icons.Default.Inventory2),
+        Triple("books", "Books of Account", Icons.Default.MenuBook),
+        Triple("reports", "Reports", Icons.Default.BarChart),
+        Triple("more", "More", Icons.Default.Menu)
+    )
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Text("DeryAccount", fontSize = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier.padding(20.dp))
+                Text("Books of account, offline",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 20.dp))
+                Spacer(Modifier.height(12.dp))
+                drawerItems.forEach { (route, label, icon) ->
+                    NavigationDrawerItem(
+                        label = { Text(label, fontWeight = FontWeight.SemiBold) },
+                        icon = { Icon(icon, null) },
+                        selected = currentRoute == route,
+                        onClick = {
+                            scopeDrawer.launch { drawerState.close() }
+                            navController.navigate(route) { launchSingleTop = true }
+                        },
+                        modifier = Modifier.padding(horizontal = 10.dp)
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.fillMaxWidth().padding(12.dp)
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("FREE for the first 100", fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary)
+                        Text("Ugandan businesses — every feature, offline.",
+                            fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+    ) {
     Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(appTitle(currentRoute),
+                    fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = { scopeDrawer.launch { drawerState.open() } }) {
+                        Icon(Icons.Default.Menu, "Menu")
+                    }
+                }
+            )
+        },
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(
@@ -146,4 +209,14 @@ fun DeryAccountApp() {
             }
         }
     }
+    } // drawer
+}
+
+/** Screen titles for the top bar. */
+private fun appTitle(route: String?): String = when (route) {
+    "pos" -> "DeryAccount — Sell"
+    "inventory" -> "Stock"
+    "books" -> "Books of Account"
+    "reports" -> "Reports"
+    else -> "DeryAccount"
 }

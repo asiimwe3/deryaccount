@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.*
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.*
@@ -23,6 +24,8 @@ import com.derycode.deryaccount.accounting.AccountingRepo
 import com.derycode.deryaccount.data.local.AppDatabase
 import com.derycode.deryaccount.data.local.dao.AccountEntryView
 import com.derycode.deryaccount.data.local.entity.Account
+import com.derycode.deryaccount.util.PdfExport
+import java.io.File
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -39,20 +42,22 @@ import java.util.Locale
 @Composable
 fun BooksScreen(db: AppDatabase, accounting: AccountingRepo) {
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Cash Book", "Ledger", "Trial Balance", "Income Stmt")
+    val tabs = listOf("Cash Book", "Ledger", "Trial Balance", "Income Stmt", "Balance Sheet")
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = tab) {
+        ScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
             tabs.forEachIndexed { i, t ->
                 Tab(selected = tab == i, onClick = { tab = i },
                     text = { Text(t, fontSize = 13.sp, fontWeight = FontWeight.Bold) })
             }
         }
         when (tab) {
-            0 -> CashBookTab(db, accounting)
-            1 -> LedgerTab(db, accounting)
-            2 -> TrialBalanceTab(accounting)
-            3 -> IncomeStatementTab(accounting)
+            0 -> CashBookTab(db, accounting, context)
+            1 -> LedgerTab(db, accounting, context)
+            2 -> TrialBalanceTab(accounting, context)
+            3 -> IncomeStatementTab(accounting, context)
+            4 -> BalanceSheetTab(accounting, context)
         }
     }
 }
@@ -63,7 +68,7 @@ private data class BookRow(val date: String, val voucher: String, val particular
 // CASH BOOK
 // ----------------------------------------------------------------
 @Composable
-private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo) {
+private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo, context: android.content.Context) {
     val scope = rememberCoroutineScope()
     var rows by remember { mutableStateOf(emptyList<BookRow>()) }
     var opening by remember { mutableStateOf(0.0) }
@@ -104,10 +109,16 @@ private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo) {
         BookTable(Modifier.weight(1f), rows)
         Spacer(Modifier.height(6.dp))
 
-        Button(onClick = { showEntryDialog = true },
-            modifier = Modifier.fillMaxWidth().height(56.dp)) {
-            Icon(Icons.Default.Add, null)
-            Text("  New Entry", fontWeight = FontWeight.Bold)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { showEntryDialog = true },
+                modifier = Modifier.weight(1f).height(56.dp)) {
+                Icon(Icons.Default.Add, null)
+                Text("  New Entry", fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(onClick = { printBook(context, "Cash Book", opening, rows) },
+                modifier = Modifier.height(56.dp)) {
+                Icon(Icons.Default.Print, null)
+            }
         }
     }
 
@@ -262,7 +273,7 @@ private fun DropdownField(
 // ----------------------------------------------------------------
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LedgerTab(db: AppDatabase, accounting: AccountingRepo) {
+private fun LedgerTab(db: AppDatabase, accounting: AccountingRepo, context: android.content.Context) {
     var accounts by remember { mutableStateOf(emptyList<Account>()) }
     var selected by remember { mutableStateOf<String?>(null) }
     var rows by remember { mutableStateOf(emptyList<BookRow>()) }
@@ -292,6 +303,10 @@ private fun LedgerTab(db: AppDatabase, accounting: AccountingRepo) {
             color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(4.dp))
         BookTable(Modifier.weight(1f), rows)
+        OutlinedButton(onClick = { printBook(context, "Ledger", opening, rows) },
+            modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Print, null); Text("  Print / Save PDF")
+        }
     }
 }
 
@@ -299,7 +314,7 @@ private fun LedgerTab(db: AppDatabase, accounting: AccountingRepo) {
 // TRIAL BALANCE
 // ----------------------------------------------------------------
 @Composable
-private fun TrialBalanceTab(accounting: AccountingRepo) {
+private fun TrialBalanceTab(accounting: AccountingRepo, context: android.content.Context) {
     val scope = rememberCoroutineScope()
     var rows by remember { mutableStateOf(emptyList<TBRow>()) }
     LaunchedEffect(Unit) {
@@ -332,6 +347,17 @@ private fun TrialBalanceTab(accounting: AccountingRepo) {
         Text("Dr ${fmt(rows.sumOf { it.debit })}  =  Cr ${fmt(rows.sumOf { it.credit })}",
             fontWeight = FontWeight.Bold, fontSize = 14.sp,
             modifier = Modifier.padding(vertical = 6.dp))
+        OutlinedButton(onClick = {
+            val file = PdfExport.bookPdf(context, "Trial Balance", "DeryAccount",
+                listOf("CODE  ACCOUNT  DR  CR"),
+                rows.map { listOf("${it.code} ${it.name}",
+                    if (it.debit > 0) fmt(it.debit) else "",
+                    if (it.credit > 0) fmt(it.credit) else "") },
+                listOf("Dr ${fmt(rows.sumOf { it.debit })} = Cr ${fmt(rows.sumOf { it.credit })}"))
+            try { PdfExport.printPdf(context, file, "Trial Balance") } catch (_: Exception) {}
+        }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Print, null); Text("  Print / Save PDF")
+        }
     }
 }
 
@@ -341,7 +367,7 @@ private data class TBRow(val code: String, val name: String, val debit: Double, 
 // INCOME STATEMENT
 // ----------------------------------------------------------------
 @Composable
-private fun IncomeStatementTab(accounting: AccountingRepo) {
+private fun IncomeStatementTab(accounting: AccountingRepo, context: android.content.Context) {
     val scope = rememberCoroutineScope()
     var stmt by remember { mutableStateOf<AccountingRepo.IncomeStatement?>(null) }
     LaunchedEffect(Unit) {
@@ -386,6 +412,19 @@ private fun IncomeStatementTab(accounting: AccountingRepo) {
                     color = if (s.netProfit >= 0) Color(0xFF2E7D32) else Color(0xFFC62828),
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
+                OutlinedButton(onClick = {
+                    val body = s.income.map { listOf("Income", it.first, fmt(it.second)) } +
+                        s.expenses.map { listOf("Expense", it.first, fmt(it.second)) }
+                    val file = PdfExport.bookPdf(context, "Income Statement", "DeryAccount",
+                        listOf("TYPE  ACCOUNT  AMOUNT"), body,
+                        listOf("Total Income ${fmt(s.totalIncome)}",
+                               "Total Expenses ${fmt(s.totalExpenses)}",
+                               if (s.netProfit >= 0) "NET PROFIT ${fmt(s.netProfit)}"
+                               else "NET LOSS ${fmt(-s.netProfit)}"))
+                    try { PdfExport.printPdf(context, file, "Income Statement") } catch (_: Exception) {}
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Print, null); Text("  Print / Save PDF")
+                }
             }
         }
     }
@@ -399,6 +438,107 @@ private fun StatementRow(name: String, amount: Double, isExpense: Boolean) {
         Text(fmt(amount), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
             color = if (isExpense) Color(0xFFC62828) else Color(0xFF2E7D32))
     }
+}
+
+// ----------------------------------------------------------------
+// BALANCE SHEET
+// ----------------------------------------------------------------
+@Composable
+private fun BalanceSheetTab(accounting: AccountingRepo, context: android.content.Context) {
+    var sheet by remember { mutableStateOf<BS?>(null) }
+    LaunchedEffect(Unit) {
+        val tb = accounting.trialBalance("1970-01-01T00:00:00.000Z", todayEnd())
+        val assets = tb.filter { it.type == "ASSET" && it.netBalance != 0.0 }
+            .map { it.name to it.netBalance }
+        val liabilities = tb.filter { it.type == "LIABILITY" && it.netBalance != 0.0 }
+            .map { it.name to -it.netBalance }
+        val equityAcc = tb.filter { it.type == "EQUITY" && it.netBalance != 0.0 }
+            .map { it.name to -it.netBalance }
+        val income = tb.filter { it.type == "INCOME" }.sumOf { -it.netBalance }
+        val expenses = tb.filter { it.type == "EXPENSE" }.sumOf { it.netBalance }
+        val profit = income - expenses
+        sheet = BS(assets, liabilities, equityAcc, profit)
+    }
+    Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Text("BALANCE SHEET", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        Spacer(Modifier.height(6.dp))
+        LazyColumn(Modifier.weight(1f)) {
+            sheet?.let { sh ->
+                item { Section("ASSETS", Color(0xFF2E7D32)) }
+                items(sh.assets.size) { i ->
+                    StatementRow(sh.assets[i].first, sh.assets[i].second, false)
+                }
+                item {
+                    Text("Total Assets: ${fmt(sh.assets.sumOf { it.second })}",
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
+                    Section("LIABILITIES", Color(0xFFC62828))
+                }
+                items(sh.liabilities.size) { i ->
+                    StatementRow(sh.liabilities[i].first, sh.liabilities[i].second, true)
+                }
+                item {
+                    Text("Total Liabilities: ${fmt(sh.liabilities.sumOf { it.second })}",
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
+                    Section("EQUITY", MaterialTheme.colorScheme.primary)
+                }
+                items(sh.equity.size) { i ->
+                    StatementRow(sh.equity[i].first, sh.equity[i].second, false)
+                }
+                item {
+                    StatementRow("Net Profit (this period)", sh.profit, false)
+                    val equityTotal = sh.equity.sumOf { it.second } + sh.profit
+                    val total = sh.assets.sumOf { it.second }
+                    Text("Total Equity: ${fmt(equityTotal)}",
+                        fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
+                    Divider()
+                    Text("ASSETS ${fmt(total)}  =  LIAB + EQUITY ${fmt(sh.liabilities.sumOf { it.second } + equityTotal)}",
+                        fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
+                    Spacer(Modifier.height(6.dp))
+                    OutlinedButton(onClick = {
+                        val body = sh.assets.map { listOf("Asset", it.first, fmt(it.second)) } +
+                            sh.liabilities.map { listOf("Liability", it.first, fmt(it.second)) } +
+                            sh.equity.map { listOf("Equity", it.first, fmt(it.second)) } +
+                            listOf(listOf("Equity", "Net Profit", fmt(sh.profit)))
+                        val file = PdfExport.bookPdf(context, "Balance Sheet", "DeryAccount",
+                            listOf("TYPE  ACCOUNT  AMOUNT"), body,
+                            listOf("Assets ${fmt(sh.assets.sumOf { it.second })}",
+                                   "Liabilities ${fmt(sh.liabilities.sumOf { it.second })}",
+                                   "Equity ${fmt(sh.equity.sumOf { it.second } + sh.profit)}"))
+                        try { PdfExport.printPdf(context, file, "Balance Sheet") } catch (_: Exception) {}
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Print, null); Text("  Print / Save PDF")
+                    }
+                }
+            } ?: item {
+                Text("No entries yet.", fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+private data class BS(val assets: List<Pair<String, Double>>,
+                      val liabilities: List<Pair<String, Double>>,
+                      val equity: List<Pair<String, Double>>,
+                      val profit: Double)
+
+@Composable
+private fun Section(title: String, color: Color) {
+    Text(title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = color,
+        modifier = Modifier.padding(top = 6.dp))
+}
+
+/** Print the ruled cashbook/ledger rows as a PDF book page. */
+private fun printBook(context: android.content.Context, title: String,
+                      opening: Double, rows: List<BookRow>) {
+    val body = rows.map { listOf(shortDate(it.date), it.voucher, it.particulars,
+        if (it.effect > 0) fmt(it.effect) else "",
+        if (it.effect < 0) fmt(-it.effect) else "") }
+    val footer = mutableListOf("Opening B/F ${fmt(opening)}",
+        "Closing balance ${fmt(opening + rows.sumOf { it.effect })}")
+    val file = PdfExport.bookPdf(context, title, "DeryAccount",
+        listOf("DATE  VCHR  PARTICULARS  RECEIPT  PAYMENT"), body, footer)
+    try { PdfExport.printPdf(context, file, title) } catch (_: Exception) {}
 }
 
 // ----------------------------------------------------------------
