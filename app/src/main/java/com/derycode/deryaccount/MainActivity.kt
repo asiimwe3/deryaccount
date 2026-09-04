@@ -25,6 +25,8 @@ import com.derycode.deryaccount.ui.pos.PosScreen
 import com.derycode.deryaccount.ui.inventory.InventoryScreen
 import com.derycode.deryaccount.ui.pos.PosViewModel
 import com.derycode.deryaccount.ui.reports.ReportsScreen
+import com.derycode.deryaccount.ui.books.BooksScreen
+import com.derycode.deryaccount.accounting.AccountingRepo
 import com.derycode.deryaccount.ui.settings.MoreScreen
 import com.derycode.deryaccount.ui.theme.DeryAccountTheme
 import com.derycode.deryaccount.util.SessionManager
@@ -101,6 +103,12 @@ fun DeryAccountApp() {
                     label = { Text("Reports") }
                 )
                 NavigationBarItem(
+                    selected = currentRoute == "books",
+                    onClick = { navController.navigate("books") { launchSingleTop = true } },
+                    icon = { Icon(Icons.Default.MenuBook, null) },
+                    label = { Text("Books") }
+                )
+                NavigationBarItem(
                     selected = currentRoute == "more",
                     onClick = { navController.navigate("more") { launchSingleTop = true } },
                     icon = { Icon(Icons.Default.Menu, null) },
@@ -125,6 +133,10 @@ fun DeryAccountApp() {
             }
             composable("reports") {
                 ReportsScreen(db, branchId)
+            }
+            composable("books") {
+                val accounting = remember { AccountingRepo(db) }
+                BooksScreen(db, accounting)
             }
             composable("more") {
                 MoreScreen(db, syncEngine, session, context) {

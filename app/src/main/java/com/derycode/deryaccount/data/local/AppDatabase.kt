@@ -12,9 +12,10 @@ import com.derycode.deryaccount.data.local.entity.*
         Branch::class, User::class, Product::class, Customer::class,
         Sale::class, SaleItem::class, StockMovement::class, Supplier::class,
         Purchase::class, PurchaseItem::class, Expense::class, CashMovement::class,
-        Shift::class, StockTransfer::class
+        Shift::class, StockTransfer::class,
+        Account::class, JournalEntry::class, JournalLine::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -33,6 +34,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun shiftDao(): ShiftDao
     abstract fun transferDao(): TransferDao
     abstract fun syncDao(): SyncDao
+    abstract fun accountDao(): AccountDao
+    abstract fun journalDao(): JournalDao
 
     companion object {
         @Volatile private var INSTANCE: AppDatabase? = null

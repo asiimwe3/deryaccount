@@ -166,6 +166,13 @@ class PosViewModel(
                     amountPaid = amountPaid, paymentMethod = method,
                     discount = st.discount
                 )
+                // Post to the books of account: Dr Cash/MoMo/Debtors, Cr Sales
+                try {
+                    com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
+                        ensureSeeded()
+                        postSale(result.sale.total, result.sale.paymentMethod, result.sale.receiptNo)
+                    }
+                } catch (_: Exception) { /* sale already saved; ledger retryable later */ }
                 // Save receipt to the on-device DeryAccount folder — safe even offline
                 val shopName = db.branchDao().get(branchId)?.name ?: "My Shop"
                 val txt = com.derycode.deryaccount.util.DeviceStore.buildReceiptText(

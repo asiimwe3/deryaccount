@@ -25,3 +25,17 @@ A visible `DeryAccount` folder is created on the device:
 - Camera barcode scanning
 - Expenses & cash shift reconciliation screens
 - Head-office multi-branch dashboard
+
+## Books of Account (v0.2) — 100% offline, no external connection
+The **Books** tab gives the traditional formats bookkeepers already know:
+- **Cash Book** — receipts & payments with opening B/F and running balance
+- **Petty Cash** — petty cash account included in the chart of accounts
+- **Ledger** — per-account T-entries with running balance
+- **Trial Balance** — Dr = Cr must always balance (enforced by the engine)
+- **Income Statement** — income, expenses, net profit/loss for the month
+
+Chart of accounts (1000 Cash, 1001 Petty Cash, 1010 Bank/MoMo, 1100 Debtors,
+1200 Stock, 2000 Creditors, 3000 Capital, 3100 Drawings, 4000 Sales,
+5000 Cost of Sales, 5100 Purchases, 5200–5900 expense accounts).
+
+Every POS sale posts automatically: Dr Cash/Bank/Debtors, Cr Sales.

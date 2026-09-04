@@ -289,3 +289,92 @@ interface SyncDao {
     @Query("UPDATE stock_transfers SET syncState='synced' WHERE id IN (:ids)")
     suspend fun markTransfers(ids: List<String>)
 }
+
+
+// ================= ACCOUNTING (books of account) =================
+
+@Dao
+interface AccountDao {
+    @Query("SELECT * FROM accounts ORDER BY sortOrder, code")
+    fun observeAll(): Flow<List<Account>>
+
+    @Query("SELECT * FROM accounts ORDER BY sortOrder, code")
+    suspend fun all(): List<Account>
+
+    @Query("SELECT * FROM accounts WHERE id = :id")
+    suspend fun get(id: String): Account?
+
+    @Query("SELECT * FROM accounts WHERE code = :code LIMIT 1")
+    suspend fun byCode(code: String): Account?
+
+    @Query("SELECT * FROM accounts WHERE isCash = 1 ORDER BY sortOrder")
+    suspend fun cashAccounts(): List<Account>
+
+    @Query("SELECT COUNT(*) FROM accounts")
+    suspend fun count(): Int
+
+    @Upsert
+    suspend fun upsert(a: Account)
+}
+
+@Dao
+interface JournalDao {
+    @Query("""
+        SELECT je.*, COALESCE(SUM(jl.debit - jl.credit), 0) AS cashEffect
+        FROM journal_entries je
+        JOIN journal_lines jl ON jl.entryId = je.id
+        WHERE jl.accountId = :accountId AND je.entryDate BETWEEN :from AND :to
+        GROUP BY je.id
+        ORDER BY je.entryDate DESC, je.voucherNo DESC
+    """)
+    fun observeAccountEntries(accountId: String, from: String, to: String):
+        Flow<List<AccountEntryView>>
+
+    @Query("SELECT * FROM journal_entries WHERE id = :id")
+    suspend fun getEntry(id: String): JournalEntry?
+
+    @Query("SELECT * FROM journal_lines WHERE entryId = :entryId")
+    suspend fun linesFor(entryId: String): List<JournalLine>
+
+    @Query("""
+        SELECT a.id AS accountId, a.code AS code, a.name AS name, a.type AS type,
+               COALESCE(SUM(jl.debit - jl.credit), 0) AS netBalance
+        FROM accounts a
+        LEFT JOIN journal_lines jl ON jl.accountId = a.id
+        JOIN journal_entries je ON je.id = jl.entryId AND je.entryDate BETWEEN :from AND :to
+        GROUP BY a.id
+        ORDER BY a.sortOrder, a.code
+    """)
+    suspend fun trialBalance(from: String, to: String): List<AccountBalanceView>
+
+    /** Closing balances of cash accounts for the running balance. */
+    @Query("SELECT COALESCE(SUM(jl.debit - jl.credit), 0) FROM journal_lines jl JOIN journal_entries je ON je.id = jl.entryId WHERE jl.accountId = :accountId AND je.entryDate < :date")
+    suspend fun balanceBefore(accountId: String, date: String): Double
+
+    @Insert
+    suspend fun insertEntry(e: JournalEntry)
+
+    @Insert
+    suspend fun insertLines(lines: List<JournalLine>)
+
+    @Query("SELECT COUNT(*) FROM journal_entries")
+    suspend fun entryCount(): Int
+}
+
+/** A journal entry as seen from one account (for ledger/cashbook views). */
+data class AccountEntryView(
+    val id: String,
+    val entryDate: String,
+    val voucherNo: String,
+    val particulars: String,
+    val cashEffect: Double   // debit - credit from this account's perspective
+)
+
+/** Trial balance row. */
+data class AccountBalanceView(
+    val accountId: String,
+    val code: String,
+    val name: String,
+    val type: String,
+    val netBalance: Double
+)
