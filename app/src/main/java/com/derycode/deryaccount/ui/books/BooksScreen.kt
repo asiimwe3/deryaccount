@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
 package com.derycode.deryaccount.ui.books
 
 import androidx.compose.foundation.horizontalScroll
@@ -73,12 +75,13 @@ private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo, context: an
     var rows by remember { mutableStateOf(emptyList<BookRow>()) }
     var opening by remember { mutableStateOf(0.0) }
     var accounts by remember { mutableStateOf(emptyList<Account>()) }
+    var bookCode by remember { mutableStateOf("1000") }   // 1000 cash, 1001 petty, 1010 bank/momo
     var showEntryDialog by remember { mutableStateOf(false) }
 
     suspend fun reload() {
         accounting.ensureSeeded()
         accounts = db.accountDao().all()
-        val cash = db.accountDao().byCode("1000") ?: return
+        val cash = db.accountDao().byCode(bookCode) ?: return
         opening = db.journalDao().balanceBefore(cash.id, monthStart())
         val list = db.journalDao().observeAccountEntries(cash.id, monthStart(), todayEnd()).first()
         rows = list.sortedByDescending { it.entryDate }.map {
@@ -86,15 +89,30 @@ private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo, context: an
         }
     }
 
-    LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(bookCode) { reload() }
+
+    val cashBooks = accounts.filter { it.isCash }
+    val bookName = cashBooks.firstOrNull { it.code == bookCode }?.name?.uppercase() ?: "CASH BOOK"
 
     Column(Modifier.fillMaxSize().padding(8.dp)) {
+        // Book selector — Cash Book / Petty Cash Book / Bank & MoMo Book
+        if (cashBooks.size > 1) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                cashBooks.forEach { b ->
+                    FilterChip(selected = bookCode == b.code,
+                        onClick = { bookCode = b.code },
+                        label = { Text(b.name, fontSize = 12.sp) })
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
         Surface(Modifier.fillMaxWidth(), tonalElevation = 2.dp,
             shape = MaterialTheme.shapes.medium) {
             Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
                 Column {
-                    Text("CASH BOOK — THIS MONTH", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("$bookName — THIS MONTH", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text("Opening B/F: ${fmt(opening)}", fontSize = 12.sp,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -115,7 +133,7 @@ private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo, context: an
                 Icon(Icons.Default.Add, null)
                 Text("  New Entry", fontWeight = FontWeight.Bold)
             }
-            OutlinedButton(onClick = { printBook(context, "Cash Book", opening, rows) },
+            OutlinedButton(onClick = { printBook(context, bookName, opening, rows) },
                 modifier = Modifier.height(56.dp)) {
                 Icon(Icons.Default.Print, null)
             }
