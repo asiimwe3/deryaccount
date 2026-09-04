@@ -128,7 +128,7 @@ fun DeryAccountApp() {
     val drawerItems = listOf(
         Triple("pos", "Sell / POS", Icons.Default.PointOfSale),
         Triple("inventory", "Stock", Icons.Default.Inventory2),
-        Triple("books", "Books of Account", Icons.Default.MenuBook),
+        Triple("books", "Books of Account", Icons.AutoMirrored.Filled.MenuBook),
         Triple("reports", "Reports", Icons.Default.BarChart),
         Triple("more", "More", Icons.Default.Menu)
     )
@@ -207,7 +207,7 @@ fun DeryAccountApp() {
                 NavigationBarItem(
                     selected = currentRoute == "books",
                     onClick = { navController.navigate("books") { launchSingleTop = true } },
-                    icon = { Icon(Icons.Default.MenuBook, null) },
+                    icon = { Icon(Icons.AutoMirrored.Filled.MenuBook, null) },
                     label = { Text("Books") }
                 )
                 NavigationBarItem(

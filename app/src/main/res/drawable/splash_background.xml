@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Branded splash: forest green with the house mark centered.
+     On Android 12+ the system shows the adaptive icon first, then
+     this background takes over — both forest green, seamless. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/forest" />
+    <item android:drawable="@drawable/ic_launcher_fg" android:gravity="center" />
+</layer-list>

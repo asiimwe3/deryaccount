@@ -337,6 +337,7 @@ interface AccountDao {
 
 @Dao
 interface JournalDao {
+    @androidx.room.RewriteQueriesToDropUnusedColumns
     @Query("""
         SELECT je.*, COALESCE(SUM(jl.debit - jl.credit), 0) AS cashEffect
         FROM journal_entries je
