@@ -58,3 +58,8 @@ and adds everything in one tap — opening stock is recorded as a purchase.
 - PDF engine: receipt auto-saved & auto-printed on every sale, invoices,
   stock reports, and all books of account print via the Android system
   print dialog (Bluetooth/wifi printers) or save as PDF in DeryAccount/documents
+
+## v0.4.1 — purchases posted to the books
+Adding stock (quick setup wizard or quick-add from a barcode) now posts a
+journal entry automatically: Dr Stock on Hand, Cr Cash — valued at the
+entered price x qty. The Trial Balance and Balance Sheet stay complete.

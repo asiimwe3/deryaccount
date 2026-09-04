@@ -42,6 +42,8 @@ class AccountingRepo(private val db: AppDatabase) {
         val BANK = "acc-bank"
         val DEBTORS = "acc-debtors"
         val SALES = "acc-sales"
+        val STOCK = "acc-stock"
+        val CREDITORS = "acc-creditors"
     }
 
     /** Seed the chart of accounts on first run. */
@@ -130,6 +132,17 @@ class AccountingRepo(private val db: AppDatabase) {
         }
         post(particulars = "Sales per receipt $receiptNo", source = "POS",
             debits = listOf(debitAccount to amount), credits = listOf(SALES to amount))
+    }
+
+    /**
+     * Stock purchase / opening stock: Dr Stock, Cr Cash (or Creditors if unpaid).
+     * Keeps the Trial Balance complete as the owner adds stock.
+     */
+    suspend fun postPurchase(amount: Double, paidHow: String, ref: String) {
+        if (amount <= 0) return
+        val creditAccount = if (paidHow == "CREDIT") CREDITORS else CASH
+        post(particulars = "Stock purchase $ref", source = "STOCK",
+            debits = listOf(STOCK to amount), credits = listOf(creditAccount to amount))
     }
 
     // ------- Reports -------

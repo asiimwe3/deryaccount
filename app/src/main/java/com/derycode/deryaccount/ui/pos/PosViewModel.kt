@@ -70,6 +70,13 @@ class PosViewModel(
                     branchId = branchId, type = "PURCHASE", qty = qty,
                     reference = null, note = "quick add", movedAt = now,
                     createdAt = now, updatedAt = now))
+            // Books: Dr Stock, Cr Cash for the stock just created
+            try {
+                com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
+                    ensureSeeded()
+                    postPurchase(price * qty, "CASH", "quick add $name")
+                }
+            } catch (_: Exception) { }
             db.productDao().get(id)?.let { addProductInternal(it) }
         }
     }

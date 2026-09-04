@@ -59,6 +59,15 @@ fun QuickAddStockDialog(
                             Picked(BusinessCatalog.CatalogItem(customName, "pcs", customPrice), customQty)
                         ), category!!, branchId)
                     }
+                    // Post to the books: Dr Stock, Cr Cash (at entered price x qty)
+                    try {
+                        val total = picked.sumOf { it.qty * it.item.price } +
+                            (if (customName.isNotBlank()) customQty * customPrice else 0.0)
+                        com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
+                            ensureSeeded()
+                            postPurchase(total, "CASH", "opening stock")
+                        }
+                    } catch (_: Exception) { /* stock already saved */ }
                     onDone()
                 }
             },
