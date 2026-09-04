@@ -1,5 +1,12 @@
 package com.derycode.deryaccount.ui.auth
 
+/**
+ * LoginScreen — PIN-based login for owner, manager, cashier or accountant.
+ * Works fully offline: users are stored locally with hashed PINs, and the
+ * chosen user + branch are persisted via SessionManager so a restart
+ * resumes where the shop left off.
+ */
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*

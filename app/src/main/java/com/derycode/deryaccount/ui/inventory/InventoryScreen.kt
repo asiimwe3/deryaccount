@@ -1,5 +1,12 @@
 package com.derycode.deryaccount.ui.inventory
 
+/**
+ * InventoryScreen — the shop's stock list.
+ * Shows every product with price and quantity left; supports add,
+ * edit, delete and stock adjustments. All writes are crash-protected
+ * via DbSafety (storage checks + error logging to DeryAccount/crashes).
+ */
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items

@@ -33,7 +33,13 @@ class SyncEngine(private val context: Context, private val db: AppDatabase) {
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    /** Start periodic sync attempts every 30s (cheap no-op when offline). */
+    /**
+     * Start periodic sync attempts every 30s.
+     * CRITICAL: this is a cheap no-op when offline — SupabaseClient.instance
+     * is null or !online(), so syncAll() returns immediately. The shop's
+     * books keep working with zero internet; sync only catches up when a
+     * connection appears. Never blocks the POS or accounting screens.
+     */
     fun startPeriodic() {
         if (periodicJob?.isActive == true) return
         periodicJob = scope.launch {

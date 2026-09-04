@@ -1,5 +1,13 @@
 package com.derycode.deryaccount.ui.home
 
+/**
+ * HomeScreen — the business at a glance.
+ * Every figure comes straight from the real database — no sample data.
+ * Stat cards show Cash & Bank balance, today's sales, stock value and
+ * today's expenses; quick actions jump to the screens shopkeepers use
+ * most; the books grid opens each book of account.
+ */
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells

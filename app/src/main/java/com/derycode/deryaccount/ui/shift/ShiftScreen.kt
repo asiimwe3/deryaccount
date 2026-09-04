@@ -1,5 +1,12 @@
 package com.derycode.deryaccount.ui.shift
 
+/**
+ * ShiftScreen — open and close a cashier's shift.
+ * Closing a shift produces the Z-report (sales, cash, MoMo and credit
+ * split) saved to the DeryAccount folder, matching how shops reconcile
+ * the drawer at end of day.
+ */
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items

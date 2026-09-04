@@ -1,5 +1,12 @@
 package com.derycode.deryaccount.data.local
 
+/**
+ * AppDatabase — the single Room database for DeryAccount.
+ * Holds all 14+ tables (products, sales, stock, accounts, journal, users...)
+ * and exposes the DAOs. get() returns the app-wide singleton so every
+ * screen shares one connection — essential for the offline-first design.
+ */
+
 import android.content.Context
 import androidx.room.Database
 import androidx.room.Room

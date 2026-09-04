@@ -1,5 +1,13 @@
 package com.derycode.deryaccount.ui.sales
 
+/**
+ * SalesScreen — the day's sales, live from the local database.
+ * Top summary shows Total Sales and number of sales for today.
+ * Tapping a sale opens SaleDetailsScreen with the full item breakdown
+ * (items, quantities, prices, amounts and the grand total) — the digital
+ * version of a counter book of daily sales.
+ */
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn

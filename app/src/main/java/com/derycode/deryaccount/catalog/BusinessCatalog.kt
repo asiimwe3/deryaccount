@@ -1,6 +1,16 @@
 package com.derycode.deryaccount.catalog
 
 /**
+ * BusinessCatalog — the predefined Ugandan product catalogs.
+ * 12 business categories (General Shop, Supermarket, Hardware, Pharmacy,
+ * Agro-Vet, Butchery, Salon, Stationery, Bar/Restaurant, Mobile Money,
+ * Produce & Grains, Electronics) with 800+ common items and typical
+ * market prices. Powers the Quick Stock Setup wizard so a new shop can
+ * stock its shelves in minutes instead of typing items one by one.
+ * NOTE: this file is data, not logic — edit prices/items only.
+ */
+
+/**
  * BusinessCatalog — comprehensive predefined item lists per business
  * category so the owner just PICKS items instead of typing them.
  * Prices are typical Ugandan market prices (editable per item).
