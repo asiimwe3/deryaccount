@@ -63,3 +63,14 @@ and adds everything in one tap — opening stock is recorded as a purchase.
 Adding stock (quick setup wizard or quick-add from a barcode) now posts a
 journal entry automatically: Dr Stock on Hand, Cr Cash — valued at the
 entered price x qty. The Trial Balance and Balance Sheet stay complete.
+
+## v0.5 — everything matches, camera scanner, edit & delete
+- Camera barcode scanner (ML Kit, fully offline) — tap the scan icon in the search bar
+- Cost price captured per item (picker + quick-add + edit)
+- Every sale now posts Cost of Sales (Dr COGS, Cr Stock at cost x qty),
+  so the Stock account in the Balance Sheet always equals the Stock screen value
+- Stock value (closing stock at cost) shown in the Stock screen header
+- POS tiles show remaining stock ("12 left", red when low, OUT when empty)
+- Edit & delete products: pencil/trash icons on every stock row;
+  edits adjust the books (Dr/Cr Stock) and deletes write off remaining stock value
+- Picker price/stock fields rebuilt on Compose state maps (typing always visible)

@@ -44,6 +44,8 @@ class AccountingRepo(private val db: AppDatabase) {
         val SALES = "acc-sales"
         val STOCK = "acc-stock"
         val CREDITORS = "acc-creditors"
+        val COGS = "acc-cogs"
+        val SUNDAY_RUN = "acc-sundry"
     }
 
     /** Seed the chart of accounts on first run. */
@@ -125,7 +127,7 @@ class AccountingRepo(private val db: AppDatabase) {
 
     /** POS sale posting: Dr cash/bank/debtors, Cr sales. */
     suspend fun postSale(amount: Double, method: String, receiptNo: String,
-                        itemCount: Int = 0) {
+                        itemCount: Int = 0, costTotal: Double = 0.0) {
         val debitAccount = when (method) {
             "MTN_MOMO", "AIRTEL_MONEY" -> BANK
             "CREDIT" -> DEBTORS
@@ -134,6 +136,28 @@ class AccountingRepo(private val db: AppDatabase) {
         val detail = if (itemCount > 0) "$itemCount item${if (itemCount == 1) "" else "s"}" else "sale"
         post(particulars = "Sales — $detail ($receiptNo)", source = "POS",
             debits = listOf(debitAccount to amount), credits = listOf(SALES to amount))
+        // Cost of sales: keeps the Stock account in step with physical stock
+        if (costTotal > 0) {
+            post(particulars = "Cost of sales — $detail ($receiptNo)", source = "POS",
+                debits = listOf(COGS to costTotal), credits = listOf(STOCK to costTotal))
+        }
+    }
+
+    /** Stock edit: +/- change in stock value at cost, so books match the Stock screen. */
+    suspend fun postStockChange(deltaValue: Double, note: String) {
+        if (deltaValue > 0)
+            post(particulars = "Stock top-up ($note)", source = "STOCK",
+                debits = listOf(STOCK to deltaValue), credits = listOf(CASH to deltaValue))
+        else if (deltaValue < 0)
+            post(particulars = "Stock reduction ($note)", source = "STOCK",
+                debits = listOf(SUNDAY_RUN to -deltaValue), credits = listOf(STOCK to -deltaValue))
+    }
+
+    /** Stock removed from the business (delete/write-off): Cr Stock, Dr Sundry expense. */
+    suspend fun postStockWriteOff(value: Double, note: String) {
+        if (value > 0)
+            post(particulars = "Stock write-off ($note)", source = "STOCK",
+                debits = listOf(SUNDAY_RUN to value), credits = listOf(STOCK to value))
     }
 
     /**

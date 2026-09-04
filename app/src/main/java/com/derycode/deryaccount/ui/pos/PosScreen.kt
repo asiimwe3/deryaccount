@@ -42,6 +42,7 @@ fun PosScreen(
     val scope = rememberCoroutineScope()
     var showBanner by remember { mutableStateOf(true) }
     var showCalc by remember { mutableStateOf(false) }
+    var showScanner by remember { mutableStateOf(false) }
 
     // Auto-open the print dialog after EVERY sale (receipt saved as PDF too)
     ui.lastReceipt?.pdfPath?.let { path ->
@@ -87,7 +88,15 @@ fun PosScreen(
             keyboardActions = KeyboardActions(onDone = {
                 if (scanInput.isNotBlank()) { viewModel.onScan(scanInput.trim()); scanInput = "" }
             }),
-            leadingIcon = { Icon(Icons.Default.QrCodeScanner, null) },
+            leadingIcon = {
+                Row {
+                    IconButton(onClick = { showScanner = true }) {
+                        Icon(Icons.Default.QrCodeScanner, "Scan with camera")
+                    }
+                    Icon(Icons.Default.Search, null,
+                        modifier = Modifier.align(Alignment.CenterVertically))
+                }
+            },
             trailingIcon = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { showCalc = true }) {
@@ -184,6 +193,20 @@ fun PosScreen(
         }
     }
 
+    // ---- Camera barcode scanner ----
+    if (showScanner) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showScanner = false }) {
+            Surface(Modifier.fillMaxSize()) {
+                BarcodeScannerScreen(
+                    onScanned = { code ->
+                        showScanner = false
+                        viewModel.onScan(code)
+                    },
+                    onClose = { showScanner = false })
+            }
+        }
+    }
+
     // ---- Calculator ----
     if (showCalc) CalculatorDialog(onClose = { showCalc = false })
 
@@ -191,7 +214,7 @@ fun PosScreen(
     ui.unknownBarcode?.let { code ->
         QuickAddDialog(
             barcode = code,
-            onSave = { name, price, qty -> viewModel.quickAddProduct(name, price, qty, code) },
+            onSave = { name, price, cst, qty -> viewModel.quickAddProduct(name, price, cst, qty, code) },
             onDismiss = viewModel::dismissQuickAdd
         )
     }
@@ -244,18 +267,27 @@ private fun ProductTile(p: Product, onTap: () -> Unit) {
         ) {
             Text(p.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 2, modifier = Modifier.padding(horizontal = 2.dp))
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(2.dp))
             Text(fmtMoney(p.retailPrice), fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            val left = if (p.stockQty % 1.0 == 0.0) p.stockQty.toLong() else p.stockQty
+            Text(
+                if (p.stockQty <= 0) "OUT" else "$left left",
+                fontSize = 10.sp,
+                color = if (p.stockQty <= p.lowStockAlert) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = if (p.stockQty <= p.lowStockAlert) FontWeight.Bold else FontWeight.Normal
+            )
         }
     }
 }
 
 /** One-shot product creation from an unknown barcode — 2 fields only. */
 @Composable
-private fun QuickAddDialog(barcode: String, onSave: (String, Double, Double) -> Unit, onDismiss: () -> Unit) {
+private fun QuickAddDialog(barcode: String, onSave: (String, Double, Double, Double) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
+    var cost by remember { mutableStateOf("") }
     var qty by remember { mutableStateOf("1") }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -265,6 +297,8 @@ private fun QuickAddDialog(barcode: String, onSave: (String, Double, Double) -> 
                 OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true)
                 OutlinedTextField(price, { price = it }, label = { Text("Selling price") },
                     singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                OutlinedTextField(cost, { cost = it }, label = { Text("Cost price (optional)") },
+                    singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                 OutlinedTextField(qty, { qty = it }, label = { Text("Stock qty") },
                     singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
             }
@@ -273,7 +307,8 @@ private fun QuickAddDialog(barcode: String, onSave: (String, Double, Double) -> 
             Button(onClick = {
                 val pr = price.toDoubleOrNull() ?: return@Button
                 val q = qty.toDoubleOrNull() ?: 1.0
-                if (name.isNotBlank()) onSave(name, pr, q)
+                val c = cost.toDoubleOrNull() ?: pr
+                if (name.isNotBlank()) onSave(name, pr, c, q)
             }) { Text("Save & Sell") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }

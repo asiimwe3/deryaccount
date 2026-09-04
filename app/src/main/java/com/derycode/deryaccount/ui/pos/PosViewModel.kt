@@ -53,14 +53,14 @@ class PosViewModel(
         db.productDao().observeBranchProducts(branchId)
 
     /** Quick-add: create product from an unknown barcode scan, then sell it immediately. */
-    fun quickAddProduct(name: String, price: Double, qty: Double, barcode: String?) {
+    fun quickAddProduct(name: String, price: Double, cost: Double, qty: Double, barcode: String?) {
         viewModelScope.launch {
             val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
                 .format(java.util.Date())
             val id = java.util.UUID.randomUUID().toString()
             db.productDao().upsert(com.derycode.deryaccount.data.local.entity.Product(
                 id = id, name = name, barcode = barcode, category = "General", unit = "pcs",
-                costPrice = 0.0, retailPrice = price, wholesalePrice = null,
+                costPrice = cost, retailPrice = price, wholesalePrice = null,
                 stockQty = qty, lowStockAlert = 5.0, expiryDate = null,
                 branchId = branchId, createdAt = now, updatedAt = now
             ))
@@ -179,7 +179,8 @@ class PosViewModel(
                     com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
                         ensureSeeded()
                         postSale(result.sale.total, result.sale.paymentMethod,
-                            result.sale.receiptNo, result.items.size)
+                            result.sale.receiptNo, result.items.size,
+                            st.cart.sumOf { it.qty * it.product.costPrice })
                     }
                 } catch (_: Exception) { /* sale already saved; ledger retryable later */ }
                 // Save receipt to the on-device DeryAccount folder — safe even offline

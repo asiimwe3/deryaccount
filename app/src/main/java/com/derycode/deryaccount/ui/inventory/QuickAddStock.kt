@@ -51,18 +51,20 @@ fun QuickAddStockDialog(
     } else {
         ItemPicker(
             category = category!!,
-            onAdd = { picked, customName, customPrice, customQty ->
+            onAdd = { picked, customName, customPrice, customQty, customCost ->
                 scope.launch {
                     db.createProducts(picked, category!!, branchId)
                     if (customName.isNotBlank() && customPrice > 0) {
                         db.createProducts(listOf(
-                            Picked(BusinessCatalog.CatalogItem(customName, "pcs", customPrice), customQty)
+                            Picked(BusinessCatalog.CatalogItem(customName, "pcs", customPrice),
+                                customQty, customCost)
                         ), category!!, branchId)
                     }
-                    // Post to the books: Dr Stock, Cr Cash (at entered price x qty)
+                    // Post to the books: Dr Stock, Cr Cash — at COST price x qty,
+                    // so closing stock in the books always matches the Stock screen.
                     try {
-                        val total = picked.sumOf { it.qty * it.item.price } +
-                            (if (customName.isNotBlank()) customQty * customPrice else 0.0)
+                        val total = picked.sumOf { it.qty * it.cost } +
+                            (if (customName.isNotBlank()) customQty * customCost else 0.0)
                         com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
                             ensureSeeded()
                             postPurchase(total, "CASH", "opening stock")
@@ -76,8 +78,8 @@ fun QuickAddStockDialog(
     }
 }
 
-/** A catalog item the owner ticked, with their price & opening stock. */
-data class Picked(val item: BusinessCatalog.CatalogItem, val qty: Double)
+/** A catalog item the owner ticked, with their selling price, cost & opening stock. */
+data class Picked(val item: BusinessCatalog.CatalogItem, val qty: Double, val cost: Double)
 
 private suspend fun AppDatabase.createProducts(
     picked: List<Picked>, category: String, branchId: String
@@ -87,7 +89,7 @@ private suspend fun AppDatabase.createProducts(
         val id = UUID.randomUUID().toString()
         productDao().upsert(Product(
             id = id, name = p.item.name, barcode = null, category = category,
-            unit = p.item.unit, costPrice = 0.0, retailPrice = p.item.price,
+            unit = p.item.unit, costPrice = p.cost, retailPrice = p.item.price,
             wholesalePrice = null, stockQty = p.qty, lowStockAlert = 5.0,
             expiryDate = null, branchId = branchId, createdAt = now, updatedAt = now
         ))
@@ -147,15 +149,17 @@ private fun CategoryPicker(onPick: (String) -> Unit, onSkip: () -> Unit) {
 @Composable
 private fun ItemPicker(
     category: String,
-    onAdd: (List<Picked>, String, Double, Double) -> Unit,
+    onAdd: (List<Picked>, String, Double, Double, Double) -> Unit,
     onBack: () -> Unit
 ) {
     val catalog = remember(category) { BusinessCatalog.itemsFor(category) }
     var selected by remember { mutableStateOf(setOf<Int>()) }
-    var prices by remember { mutableStateOf(mutableMapOf<Int, String>()) }
-    var qtys by remember { mutableStateOf(mutableMapOf<Int, String>()) }
+    val prices = remember { mutableStateMapOf<Int, String>() }
+    val costs = remember { mutableStateMapOf<Int, String>() }
+    val qtys = remember { mutableStateMapOf<Int, String>() }
     var customName by remember { mutableStateOf("") }
     var customPrice by remember { mutableStateOf("") }
+    var customCost by remember { mutableStateOf("") }
     var customQty by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -191,10 +195,21 @@ private fun ItemPicker(
                                         prices[i] = it
                                         if (it.toDoubleOrNull() != null) selected = selected + i
                                     },
-                                    label = { Text("Price UGX", fontSize = 11.sp) },
+                                    label = { Text("Sell UGX", fontSize = 11.sp) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     singleLine = true,
-                                    modifier = Modifier.width(120.dp).height(52.dp)
+                                    modifier = Modifier.width(104.dp).height(52.dp)
+                                )
+                                OutlinedTextField(
+                                    value = costs[i] ?: ci.price.toLong().toString(),
+                                    onValueChange = {
+                                        costs[i] = it
+                                        if (it.toDoubleOrNull() != null) selected = selected + i
+                                    },
+                                    label = { Text("Cost UGX", fontSize = 11.sp) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    singleLine = true,
+                                    modifier = Modifier.width(104.dp).height(52.dp)
                                 )
                                 OutlinedTextField(
                                     value = qtys[i] ?: "",
@@ -225,13 +240,17 @@ private fun ItemPicker(
                                 Spacer(Modifier.height(4.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     OutlinedTextField(customPrice, { customPrice = it },
-                                        label = { Text("Price UGX") },
+                                        label = { Text("Sell UGX") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        singleLine = true, modifier = Modifier.width(120.dp))
+                                        singleLine = true, modifier = Modifier.width(100.dp))
+                                    OutlinedTextField(customCost, { customCost = it },
+                                        label = { Text("Cost UGX") },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        singleLine = true, modifier = Modifier.width(100.dp))
                                     OutlinedTextField(customQty, { customQty = it },
-                                        label = { Text("Opening stock") },
+                                        label = { Text("Stock") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        singleLine = true, modifier = Modifier.width(120.dp))
+                                        singleLine = true, modifier = Modifier.width(100.dp))
                                 }
                             }
                         }
@@ -245,12 +264,14 @@ private fun ItemPicker(
                     val ci = catalog[i]
                     val pr = (prices[i] ?: ci.price.toString()).toDoubleOrNull()
                         ?: return@mapNotNull null
+                    val cost = (costs[i] ?: pr.toString()).toDoubleOrNull() ?: pr
                     val q = (qtys[i] ?: "0").toDoubleOrNull() ?: 0.0
-                    Picked(BusinessCatalog.CatalogItem(ci.name, ci.unit, pr), q)
+                    Picked(BusinessCatalog.CatalogItem(ci.name, ci.unit, pr), q, cost)
                 }
                 onAdd(chosen, customName,
                     customPrice.toDoubleOrNull() ?: 0.0,
-                    customQty.toDoubleOrNull() ?: 0.0)
+                    customQty.toDoubleOrNull() ?: 0.0,
+                    customCost.toDoubleOrNull() ?: customPrice.toDoubleOrNull() ?: 0.0)
             }) {
                 Icon(Icons.Default.Check, null)
                 Text("  Add ${selected.size} items")

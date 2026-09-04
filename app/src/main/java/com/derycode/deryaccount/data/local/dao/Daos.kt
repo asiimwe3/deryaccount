@@ -30,6 +30,9 @@ interface ProductDao {
     @Upsert
     suspend fun upsertAll(products: List<Product>)
 
+    @Query("DELETE FROM products WHERE id = :id")
+    suspend fun delete(id: String)
+
     @Query("UPDATE products SET stockQty = stockQty + :delta, updatedAt = :now, syncState = 'pending' WHERE id = :id")
     suspend fun adjustStock(id: String, delta: Double, now: String)
 
