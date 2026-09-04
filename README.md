@@ -74,3 +74,8 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
 - Edit & delete products: pencil/trash icons on every stock row;
   edits adjust the books (Dr/Cr Stock) and deletes write off remaining stock value
 - Picker price/stock fields rebuilt on Compose state maps (typing always visible)
+- In-app auto-update: on each launch the app quietly checks this repo's latest
+  GitHub release (version.json); if newer, it shows "Update available" and
+  downloads + installs in-app — no more manual APK downloads
+- Crash safety net: any unexpected crash is logged to DeryAccount/crashes on
+  the device; updater and scanner failures never crash the app

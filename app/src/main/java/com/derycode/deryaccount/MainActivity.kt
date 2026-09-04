@@ -39,6 +39,9 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Crash safety net: every unexpected crash is logged to the
+        // DeryAccount/crashes folder on the device — never silently lost.
+        com.derycode.deryaccount.util.AutoUpdate.installCrashLogger(this)
         enableEdgeToEdge()
         setContent { DeryAccountTheme { DeryAccountApp() } }
     }
@@ -61,6 +64,39 @@ fun DeryAccountApp() {
             .collect { (uid, bid) ->
                 sessionState = if (uid != null && bid != null) uid to bid else null
             }
+    }
+
+    // ---- In-app auto-update: checks GitHub once per launch, never crashes ----
+    var updateInfo by remember { mutableStateOf<com.derycode.deryaccount.util.AutoUpdate.UpdateInfo?>(null) }
+    var updating by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val current = context.packageManager
+                .getPackageInfo(context.packageName, 0).let {
+                    if (android.os.Build.VERSION.SDK_INT >= 28) it.longVersionCode.toInt()
+                    else @Suppress("DEPRECATION") it.versionCode
+                }
+            updateInfo = com.derycode.deryaccount.util.AutoUpdate.check(current)
+        }
+    }
+    updateInfo?.let { info ->
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Update available — v${info.versionName}") },
+            text = { Text(info.notes) },
+            confirmButton = {
+                Button(onClick = {
+                    updating = true
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                        com.derycode.deryaccount.util.AutoUpdate.downloadAndInstall(context, info)
+                        updating = false
+                    }
+                }) { if (updating) Text("Downloading…") else Text("Update now") }
+            },
+            dismissButton = {
+                TextButton(onClick = { updateInfo = null }) { Text("Later") }
+            }
+        )
     }
 
     val syncEngine = remember { SyncEngine(context, db) }
