@@ -127,12 +127,14 @@ private fun OpenShiftDialog(db: AppDatabase, branchId: String, userId: String,
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Open Shift") },
-        text = Column {
+        text = {
+            Column {
             OutlinedTextField(amount, { amount = it },
                 label = { Text("Opening float — cash in the box (UGX)") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             error?.let { Spacer(Modifier.height(6.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
+        }
         },
         confirmButton = {
             Button(onClick = {
@@ -165,7 +167,8 @@ private fun CloseShiftDialog(db: AppDatabase, shift: Shift, expected: Double,
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Count & Close") },
-        text = Column {
+        text = {
+            Column {
             Text("Expected in the box:", fontSize = 13.sp)
             Text("UGX %,d".format(expected.toLong()), fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.height(10.dp))
@@ -174,6 +177,7 @@ private fun CloseShiftDialog(db: AppDatabase, shift: Shift, expected: Double,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             error?.let { Spacer(Modifier.height(6.dp)); Text(it, color = MaterialTheme.colorScheme.error) }
+        }
         },
         confirmButton = {
             Button(onClick = {
