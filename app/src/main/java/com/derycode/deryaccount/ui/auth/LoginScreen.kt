@@ -33,7 +33,7 @@ fun LoginScreen(
     var branchName by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
-        isFirstRun = db.userDao().byUsername("owner") == null
+        isFirstRun = db.userDao().count() == 0
     }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {

@@ -235,6 +235,9 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE isActive = 1 AND isDeleted = 0 AND username = :username LIMIT 1")
     suspend fun byUsername(username: String): User?
 
+    @Query("SELECT COUNT(*) FROM users")
+    suspend fun count(): Int
+
     @Query("SELECT * FROM users WHERE id = :id")
     suspend fun get(id: String): User?
 
