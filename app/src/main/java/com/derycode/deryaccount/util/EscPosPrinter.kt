@@ -1,0 +1,132 @@
+package com.derycode.deryaccount.util
+
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import androidx.annotation.RequiresPermission
+import com.derycode.deryaccount.data.local.entity.Sale
+import com.derycode.deryaccount.data.local.entity.SaleItem
+import com.derycode.deryaccount.data.local.entity.Branch
+import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
+import java.util.Locale
+
+/**
+ * EscPosPrinter — builds 58mm/80mm ESC/POS receipt bytes and sends them
+ * to a paired Bluetooth thermal printer over an SPP socket.
+ * Works fully offline. Falls back silently if no printer is paired
+ * (caller can then print via Android print framework / PDF).
+ */
+class EscPosPrinter(private val context: Context) {
+
+    /** 58mm printers (most common cheap UG market ones): 32 chars/line. */
+    private val width = 32
+
+    fun buildReceiptBytes(branch: Branch?, sale: Sale, items: List<SaleItem>): ByteArray {
+        val out = ByteArrayOutputStream()
+        out.write(0x1B); out.write(0x40)            // init printer
+        out.write(0x1B); out.write(0x61); out.write(1) // center
+
+        out.write(text("${branch?.name ?: "SAGECO SHOP"}\n", true, 1))
+        out.write(text("${branch?.location ?: ""}\n"))
+        out.write(text("Tel: +256-xxx-xxx\n"))
+        out.write(text("------------------------------\n"))
+        out.write(text("RECEIPT: ${sale.receiptNo}\n"))
+        val fmt = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US)
+        out.write(text("Date: ${fmt.format(java.util.Date())}\n"))
+        out.write(text("------------------------------\n"))
+
+        out.write(0x1B); out.write(0x61); out.write(0) // left
+        items.forEach { it ->
+            out.write(text(it.name))
+            val qtyStr = "x${fmtQty(it.qty)}"
+            out.write(line("${fmtMoney(it.unitPrice)}$qtyStr", fmtMoney(it.lineTotal)))
+        }
+        out.write(text("------------------------------\n"))
+        out.write(line("Subtotal:", fmtMoney(sale.subtotal)))
+        if (sale.discount > 0) out.write(line("Discount:", "-${fmtMoney(sale.discount)}"))
+        out.write(line("TOTAL:", fmtMoney(sale.total)))
+        out.write(line("Paid (${sale.paymentMethod}):", fmtMoney(sale.amountPaid)))
+        if (sale.changeGiven > 0) out.write(line("Change:", fmtMoney(sale.changeGiven)))
+
+        out.write(text("\n------------------------------\n"))
+        out.write(text("Thank you! Karibu tena!\n"))
+        out.write(0x1B); out.write(0x61); out.write(1)
+        out.write(text("Powered by DeryAccount\n"))
+        out.write(text("\n\n\n"))
+        out.write(0x1D); out.write(0x56); out.write(0x00) // cut paper
+        return out.toByteArray()
+    }
+
+    /** Build a simple canvas bitmap of the receipt for the Android print framework. */
+    fun buildReceiptBitmap(branch: Branch?, sale: Sale, items: List<SaleItem>): Bitmap {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 26f }
+        val lines = buildList {
+            add(branch?.name ?: "SHOP")
+            add("Receipt: ${sale.receiptNo}")
+            add("--------------------------------")
+            items.forEach { add("${it.name.take(20)} x${fmtQty(it.qty)}  ${fmtMoney(it.lineTotal)}") }
+            add("--------------------------------")
+            add("TOTAL: ${fmtMoney(sale.total)}")
+            add("Thank you!")
+        }
+        var w = 0
+        lines.forEach { w = maxOf(w, paint.measureText(it).toInt()) }
+        val bitmap = Bitmap.createBitmap(w + 40, lines.size * 38 + 40, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawRGB(255, 255, 255)
+        paint.color = 0xFF000000.toInt()
+        var y = 30f
+        lines.forEach { canvas.drawText(it, 20f, y, paint); y += 38f }
+        return bitmap
+    }
+
+    /** Send to a paired printer whose name contains "print" (case-insensitive). */
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    fun printBluetooth(branch: Branch?, sale: Sale, items: List<SaleItem>): Boolean {
+        return try {
+            val bm = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            val adapter: BluetoothAdapter = bm.adapter ?: return false
+            val device = adapter.bondedDevices.firstOrNull {
+                it.name?.contains("print", ignoreCase = true) == true
+            } ?: adapter.bondedDevices.firstOrNull() ?: return false
+
+            val socket = device.createRfcommSocketToServiceRecord(
+                java.util.UUID.fromString("00001101-0000-1000-8000-00805F9B34FB"))
+            adapter.cancelDiscovery()
+            socket.connect()
+            socket.outputStream.use { os ->
+                os.write(buildReceiptBytes(branch, sale, items))
+                os.flush()
+            }
+            socket.close()
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // ---- text helpers ----
+    private fun text(s: String, bold: Boolean = false, size: Int = 0): ByteArray {
+        val bos = ByteArrayOutputStream()
+        if (bold) { bos.write(0x1B); bos.write(0x45); bos.write(1) }
+        if (size > 0) { bos.write(0x1D); bos.write(0x21); bos.write(size) }
+        bos.write(s.toByteArray(Charsets.US_ASCII))
+        if (size > 0) { bos.write(0x1D); bos.write(0x21); bos.write(0) }
+        if (bold) { bos.write(0x1B); bos.write(0x45); bos.write(0) }
+        return bos.toByteArray()
+    }
+
+    private fun line(left: String, right: String): ByteArray {
+        val space = width - left.length - right.length
+        return if (space > 0) text(left + " ".repeat(space) + right + "\n")
+        else text("$left\n$right\n")
+    }
+
+    private fun fmtMoney(v: Double): String = "UGX %,d".format(v.toLong())
+    private fun fmtQty(q: Double): String = if (q % 1.0 == 0.0) q.toLong().toString() else "%.1f".format(q)
+}
