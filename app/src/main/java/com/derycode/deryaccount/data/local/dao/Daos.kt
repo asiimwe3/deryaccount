@@ -130,6 +130,9 @@ interface ShiftDao {
     @Query("SELECT * FROM shifts WHERE userId = :userId AND closedAt IS NULL ORDER BY openedAt DESC LIMIT 1")
     suspend fun openShift(userId: String): Shift?
 
+    @Query("SELECT * FROM shifts WHERE branchId = :branchId ORDER BY openedAt DESC LIMIT 30")
+    fun observeRecent(branchId: String): kotlinx.coroutines.flow.Flow<List<Shift>>
+
     @Query("SELECT * FROM shifts WHERE syncState = 'pending'")
     suspend fun pendingSync(): List<Shift>
 

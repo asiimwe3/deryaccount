@@ -30,6 +30,7 @@ import com.derycode.deryaccount.ui.pos.PosViewModel
 import com.derycode.deryaccount.ui.reports.ReportsScreen
 import com.derycode.deryaccount.ui.expenses.ExpensesScreen
 import com.derycode.deryaccount.ui.customers.CustomersScreen
+import com.derycode.deryaccount.ui.shift.ShiftScreen
 import com.derycode.deryaccount.ui.books.BooksScreen
 import com.derycode.deryaccount.accounting.AccountingRepo
 import com.derycode.deryaccount.ui.settings.MoreScreen
@@ -241,6 +242,9 @@ fun DeryAccountApp() {
             composable("customers") {
                 CustomersScreen(db)
             }
+            composable("shift") {
+                ShiftScreen(db, branchId, userId)
+            }
             composable("books") {
                 val accounting = remember { AccountingRepo(db) }
                 BooksScreen(db, accounting)
@@ -265,6 +269,7 @@ private fun appTitle(route: String?): String = when (route) {
     "reports" -> "Reports"
     "expenses" -> "Expenses"
     "customers" -> "Customers"
+    "shift" -> "Shift"
     "more" -> "More"
     else -> "DeryAccount"
 }
