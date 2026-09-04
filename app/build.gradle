@@ -13,7 +13,7 @@ android {
         minSdk 24          // covers most entry-level tablets in Uganda
         targetSdk 34
         versionCode 5
-        versionName "1.0.0"
+        versionName "0.4.0"
         vectorDrawables.useSupportLibrary = true
     }
 
