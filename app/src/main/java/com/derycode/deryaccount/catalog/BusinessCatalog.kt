@@ -26,11 +26,17 @@ object BusinessCatalog {
         "Bar & Restaurant", "Mobile Money & Airtime", "Produce & Grains", "Electronics & Accessories"
     )
 
+    // Robust parser: catalog lines look like "|Name|unit|price" (leading pipe
+    // from the text block). Bad lines are skipped, never crash the app —
+    // a typo in data must not take down the shop.
     private fun parse(block: String): List<CatalogItem> = block.trimIndent().lines()
         .filter { it.isNotBlank() }
-        .map { line ->
+        .map { it.trim().removePrefix("|") }
+        .mapNotNull { line ->
             val p = line.split("|")
-            CatalogItem(p[0].trim(), p[1].trim(), p[2].trim().toDouble())
+            if (p.size < 3) return@mapNotNull null
+            val price = p[2].trim().toDoubleOrNull() ?: return@mapNotNull null
+            CatalogItem(p[0].trim(), p[1].trim().ifBlank { "pcs" }, price)
         }
 
     fun itemsFor(category: String): List<CatalogItem> = when (category) {

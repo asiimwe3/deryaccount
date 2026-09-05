@@ -174,3 +174,11 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
 - New "Send error logs (WhatsApp)" button in More → Device Storage: packages
   the 5 newest crash logs from DeryAccount/crashes into one text file and
   opens WhatsApp share directly — no file manager needed
+
+## v0.8.2 — fixed the Quick Stock Setup crash (root cause of "app closes when adding stock")
+- BusinessCatalog parser crashed with NumberFormatException: catalog lines are
+  "|Name|unit|price" (leading pipe from the text block) but the parser read the
+  UNIT field ("bag", "kg") as the price. Every category crashed on open.
+- Parser rewritten: strips the leading pipe, and any malformed line is skipped
+  instead of crashing — a data typo can never take down the shop.
+- Verified: all 958 catalog items across 12 categories parse cleanly.
