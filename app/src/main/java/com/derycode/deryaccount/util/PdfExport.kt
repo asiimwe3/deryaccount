@@ -39,7 +39,8 @@ object PdfExport {
         File(DeviceStore.baseDir(context), "documents").apply { mkdirs() }
 
     /** Render a list of lines into a paged A4 PDF file. */
-    fun render(context: Context, fileName: String, title: String, lines: List<Line>): File {
+    fun render(context: Context, fileName: String, title: String, lines: List<Line>,
+               logo: android.graphics.Bitmap? = null): File {
         val doc = PdfDocument()
         val titlePaint = Paint().apply {
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD); textSize = 16f
@@ -48,6 +49,20 @@ object PdfExport {
         var page = doc.startPage(PdfDocument.PageInfo.Builder(PAGE_W, PAGE_H, 1).create())
         var y = 50
         var pageNo = 1
+        // Shop logo — top of page one, centered, max 64pt tall
+        if (logo != null) {
+            try {
+                val maxH = 64f
+                val scale = minOf(maxH / logo.height, 200f / logo.width, 1f)
+                val w = (logo.width * scale).toInt().coerceAtLeast(1)
+                val h = (logo.height * scale).toInt().coerceAtLeast(1)
+                val left = (PAGE_W - w) / 2f
+                page.canvas.drawBitmap(
+                    android.graphics.Bitmap.createScaledBitmap(logo, w, h, true),
+                    left, 20f, null)
+                y += h + 20
+            } catch (_: Exception) { /* a bad logo never blocks a document */ }
+        }
         page.canvas.drawText(title, 40f, y.toFloat(), titlePaint); y += 28
         val stamp = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US).format(Date())
         page.canvas.drawText(stamp, 40f, y.toFloat(), body); y += 24
@@ -103,7 +118,8 @@ object PdfExport {
             add(Line(biz?.footer?.ifBlank { null } ?: "Thank you for your business!", 10f, color = Color.GRAY))
         }
         val safe = receiptNo.replace(Regex("[^A-Za-z0-9\\-]"), "_")
-        return render(context, "receipt_$safe.pdf", "Receipt — $receiptNo", lines)
+        val logo = LogoStore.bitmapFrom(biz?.logoPath) ?: LogoStore.bitmap(context)
+        return render(context, "receipt_$safe.pdf", "Receipt — $receiptNo", lines, logo)
     }
 
     fun invoicePdf(context: Context, shopName: String, invoiceNo: String,
@@ -122,7 +138,7 @@ object PdfExport {
             add(Line(notes, 9f, color = Color.GRAY))
         }
         return render(context, "invoice_${invoiceNo.replace(Regex("[^A-Za-z0-9\\-]"), "_")}.pdf",
-            "Invoice — $invoiceNo", lines)
+            "Invoice — $invoiceNo", lines, LogoStore.bitmap(context))
     }
 
     fun stockPdf(context: Context, shopName: String,
@@ -138,7 +154,8 @@ object PdfExport {
             add(Line("-".repeat(62), 9f))
             add(Line("Total items: ${rows.size}", 10f, true))
         }
-        return render(context, "stock_${dateStamp()}.pdf", "Stock Report — $shopName", lines)
+        return render(context, "stock_${dateStamp()}.pdf", "Stock Report — $shopName", lines,
+            LogoStore.bitmap(context))
     }
 
     // -------- professional table rendering --------
@@ -187,6 +204,19 @@ object PdfExport {
         var rowIdx = 0
 
         fun drawHead() {
+            // shop logo — top center of every page of the table document
+            LogoStore.bitmap(context)?.let { lg ->
+                try {
+                    val maxH = 40f
+                    val scale = minOf(maxH / lg.height, 160f / lg.width, 1f)
+                    val w = (lg.width * scale).toInt().coerceAtLeast(1)
+                    val h = (lg.height * scale).toInt().coerceAtLeast(1)
+                    c.drawBitmap(
+                        android.graphics.Bitmap.createScaledBitmap(lg, w, h, true),
+                        (PAGE_W - w) / 2f, y - 8f, null)
+                    y += h + 6f
+                } catch (_: Exception) { }
+            }
             c.drawText(shopName, margin, y, titleP); y += 14f
             c.drawText(title, margin, y, subP)
             c.drawText(SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US).format(Date()),
@@ -306,7 +336,7 @@ object PdfExport {
             footer.forEach { add(Line(it, 10f, true)) }
         }
         return render(context, "${title.lowercase().replace(" ", "_")}_${dateStamp()}.pdf",
-            "$title — $shopName", lines)
+            "$title — $shopName", lines, LogoStore.bitmap(context))
     }
 
     private fun dateStamp() = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())

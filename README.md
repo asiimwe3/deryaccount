@@ -273,3 +273,15 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   left, a live ticket (cart + totals + pay) always visible on the right.
 - Multi-item selling is now first-class: full cart list is always scrollable
   (no "+N more items…" cap), steppers on every line.
+
+## v0.11.3 — shop logo on receipts & documents
+- Settings → Business profile: pick your shop logo from the gallery (stored
+  offline in app storage, downscaled like product photos). Change or remove
+  it any time.
+- The logo is printed at the top of every document:
+  - PDF receipts, invoices, stock reports and all books of account
+  - Android print-framework output (any connected printer / save as PDF)
+  - Bluetooth thermal receipts — raster ESC/POS (GS v 0), centered on the
+    58mm/80mm paper
+- Printing never fails because of a bad logo — if the image can't be read
+  the document simply prints without it.

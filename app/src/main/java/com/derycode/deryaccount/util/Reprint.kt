@@ -37,7 +37,8 @@ object Reprint {
             phone = profile?.phone ?: "",
             location = profile?.location ?: branch?.location ?: "",
             tin = profile?.tin ?: "",
-            footer = profile?.footer ?: "Thank you! Karibu tena!")
+            footer = profile?.footer ?: "Thank you! Karibu tena!",
+            logoPath = profile?.logoPath ?: "")
     }
 
     /** Regenerate the receipt PDF and open the system print dialog

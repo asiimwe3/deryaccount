@@ -36,6 +36,7 @@ class SessionManager(private val context: Context) {
         val KEY_BIZ_LOCATION = stringPreferencesKey("biz_location")
         val KEY_BIZ_TIN = stringPreferencesKey("biz_tin")
         val KEY_BIZ_FOOTER = stringPreferencesKey("biz_footer")
+        val KEY_BIZ_LOGO = stringPreferencesKey("biz_logo")
 
         fun sha256(s: String): String =
             MessageDigest.getInstance("SHA-256").digest(s.toByteArray())
@@ -49,7 +50,9 @@ class SessionManager(private val context: Context) {
         val phone: String = "",
         val location: String = "",
         val tin: String = "",
-        val footer: String = "Thank you for shopping with us!"
+        val footer: String = "Thank you for shopping with us!",
+        /** App-storage path of the shop logo — printed on receipts, invoices & reports. */
+        val logoPath: String = ""
     )
 
     val businessProfile: Flow<BusinessProfile?> = context.dataStore.data.map {
@@ -57,7 +60,8 @@ class SessionManager(private val context: Context) {
         if (n.isNullOrBlank()) null else BusinessProfile(
             name = n, tagline = it[KEY_BIZ_TAGLINE] ?: "",
             phone = it[KEY_BIZ_PHONE] ?: "", location = it[KEY_BIZ_LOCATION] ?: "",
-            tin = it[KEY_BIZ_TIN] ?: "", footer = it[KEY_BIZ_FOOTER] ?: "Thank you for shopping with us!")
+            tin = it[KEY_BIZ_TIN] ?: "", footer = it[KEY_BIZ_FOOTER] ?: "Thank you for shopping with us!",
+            logoPath = it[KEY_BIZ_LOGO] ?: "")
     }
 
     suspend fun businessProfileNow(): BusinessProfile? = businessProfile.first()
@@ -70,6 +74,7 @@ class SessionManager(private val context: Context) {
             it[KEY_BIZ_LOCATION] = profile.location
             it[KEY_BIZ_TIN] = profile.tin
             it[KEY_BIZ_FOOTER] = profile.footer
+            it[KEY_BIZ_LOGO] = profile.logoPath
         }
     }
 

@@ -373,7 +373,8 @@ class PosViewModel(
                     phone = profile?.phone ?: "",
                     location = profile?.location ?: branch?.location ?: "",
                     tin = profile?.tin ?: "",
-                    footer = profile?.footer ?: "Thank you! Karibu tena!")
+                    footer = profile?.footer ?: "Thank you! Karibu tena!",
+                    logoPath = profile?.logoPath ?: "")
                 val shopName = header.name
                 var pdfPath: String? = null
                 try {
@@ -416,7 +417,8 @@ class PosViewModel(
                 phone = profile?.phone ?: "",
                 location = profile?.location ?: branch?.location ?: "",
                 tin = profile?.tin ?: "",
-                footer = profile?.footer ?: "Thank you! Karibu tena!")
+                footer = profile?.footer ?: "Thank you! Karibu tena!",
+                logoPath = profile?.logoPath ?: "")
             val printer = EscPosPrinter(appContext)
             val ok = printer.printBluetooth(header, receipt.sale, receipt.items)
             _uiState.update {
