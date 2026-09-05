@@ -82,6 +82,22 @@ private fun EmptyNote(text: String) {
     }
 }
 
+@Composable
+private fun LoadError(message: String?) {
+    if (message != null) {
+        Card(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+            Column(Modifier.padding(12.dp)) {
+                Text("Analytics hit a problem", fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error)
+                Text(message, fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("The rest of the app is unaffected. This report is sent to support automatically.",
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
 /** Minimal bar chart drawn on canvas — no chart library needed offline. */
 @Composable
 private fun BarChart(values: List<Double>, labels: List<String>, title: String,
@@ -122,14 +138,19 @@ private fun BarChart(values: List<Double>, labels: List<String>, title: String,
 fun BestSellersScreen(db: AppDatabase, branchId: String) {
     var period by remember { mutableStateOf(30) }
     var rows by remember { mutableStateOf<List<ProductStat>>(emptyList()) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(period) {
         val from = if (period == 0) isoDaysAgo(3650) else isoDaysAgo(period.toLong())
-        rows = db.analyticsDao().bestSellers(branchId, from, isoDaysAgo(-1))
+        val r = runCatching { db.analyticsDao().bestSellers(branchId, from, isoDaysAgo(-1)) }
+        if (r.isSuccess) rows = r.getOrThrow()
+        else loadError = r.exceptionOrNull()?.message ?: "unknown error"
     }
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         AnalyticsHeader("Best Sellers", "Products ranked by revenue — restock what actually moves")
         PeriodChips(period) { period = it }
         Spacer(Modifier.height(8.dp))
+        LoadError(loadError)
+        if (loadError != null) return@Column
         if (rows.isEmpty()) { EmptyNote("No sales in this period yet."); return@Column }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             lazyListItems(rows) { r ->
@@ -160,8 +181,11 @@ fun BestSellersScreen(db: AppDatabase, branchId: String) {
 fun DeadStockScreen(db: AppDatabase, branchId: String) {
     var days by remember { mutableStateOf(60) }
     var rows by remember { mutableStateOf<List<DeadStockRow>>(emptyList()) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(days) {
-        rows = db.analyticsDao().deadStock(branchId, isoDaysAgo(days.toLong()))
+        val r = runCatching { db.analyticsDao().deadStock(branchId, isoDaysAgo(days.toLong())) }
+        if (r.isSuccess) rows = r.getOrThrow()
+        else loadError = r.exceptionOrNull()?.message ?: "unknown error"
     }
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         AnalyticsHeader("Dead / Slow Stock",
@@ -173,6 +197,8 @@ fun DeadStockScreen(db: AppDatabase, branchId: String) {
             }
         }
         Spacer(Modifier.height(8.dp))
+        LoadError(loadError)
+        if (loadError != null) return@Column
         if (rows.isEmpty()) { EmptyNote("Nothing is dead — every stocked item sold in this window."); return@Column }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             lazyListItems(rows) { r ->
@@ -200,12 +226,19 @@ fun DeadStockScreen(db: AppDatabase, branchId: String) {
 @Composable
 fun StockValuationScreen(db: AppDatabase, branchId: String) {
     var rows by remember { mutableStateOf<List<ValuationRow>>(emptyList()) }
-    LaunchedEffect(Unit) { rows = db.analyticsDao().valuationByCategory(branchId) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        val r = runCatching { db.analyticsDao().valuationByCategory(branchId) }
+        if (r.isSuccess) rows = r.getOrThrow()
+        else loadError = r.exceptionOrNull()?.message ?: "unknown error"
+    }
     val atCost = rows.sumOf { it.costValue }
     val atRetail = rows.sumOf { it.retailValue }
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         AnalyticsHeader("Stock Valuation",
             "What your inventory is worth right now — at cost and at selling price")
+        LoadError(loadError)
+        if (loadError != null) return@Column
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Card(Modifier.weight(1f)) {
                 Column(Modifier.padding(12.dp)) {
@@ -255,22 +288,27 @@ fun BranchComparisonScreen(db: AppDatabase) {
     var branchNames by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var sales by remember { mutableStateOf<Map<String, Pair<Double, Int>>>(emptyMap()) }
     var expenses by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(period) {
-        val branches = db.branchDao().all()
-        branchNames = branches.associate { it.id to it.name }
-        val from = if (period == 0) isoDaysAgo(3650) else isoDaysAgo(period.toLong())
-        val to = isoDaysAgo(-1)
-        sales = db.analyticsDao().salesByBranch(from, to)
-            .filter { !it.branchId.isNullOrBlank() }
-            .associate { it.branchId!! to (it.total to it.cnt) }
-        expenses = db.analyticsDao().expensesByBranch(from, to)
-            .filter { !it.branchId.isNullOrBlank() }
-            .associate { it.branchId!! to it.total }
+        runCatching {
+            val branches = db.branchDao().all()
+            branchNames = branches.associate { it.id to it.name }
+            val from = if (period == 0) isoDaysAgo(3650) else isoDaysAgo(period.toLong())
+            val to = isoDaysAgo(-1)
+            sales = db.analyticsDao().salesByBranch(from, to)
+                .filter { !it.branchId.isNullOrBlank() }
+                .associate { it.branchId!! to (it.total to it.cnt) }
+            expenses = db.analyticsDao().expensesByBranch(from, to)
+                .filter { !it.branchId.isNullOrBlank() }
+                .associate { it.branchId!! to it.total }
+        }.onFailure { loadError = it.message ?: "unknown error" }
     }
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         AnalyticsHeader("Branch Comparison", "Sales and expenses side by side, per branch")
         PeriodChips(period) { period = it }
         Spacer(Modifier.height(8.dp))
+        LoadError(loadError)
+        if (loadError != null) return@Column
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val ids = (sales.keys + expenses.keys).distinct()
             if (ids.isEmpty()) item { EmptyNote("No activity in this period.") }
@@ -305,15 +343,20 @@ fun BranchComparisonScreen(db: AppDatabase) {
 fun ProfitByProductScreen(db: AppDatabase, branchId: String) {
     var period by remember { mutableStateOf(30) }
     var rows by remember { mutableStateOf<List<ProductProfit>>(emptyList()) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(period) {
         val from = if (period == 0) isoDaysAgo(3650) else isoDaysAgo(period.toLong())
-        rows = db.analyticsDao().profitByProduct(branchId, from, isoDaysAgo(-1))
+        val r = runCatching { db.analyticsDao().profitByProduct(branchId, from, isoDaysAgo(-1)) }
+        if (r.isSuccess) rows = r.getOrThrow()
+        else loadError = r.exceptionOrNull()?.message ?: "unknown error"
     }
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         AnalyticsHeader("Profit by Product",
             "Real gross profit per item (selling price − cost at time of sale)")
         PeriodChips(period) { period = it }
         Spacer(Modifier.height(8.dp))
+        LoadError(loadError)
+        if (loadError != null) return@Column
         if (rows.isEmpty()) { EmptyNote("No sales in this period yet."); return@Column }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             lazyListItems(rows) { r ->
@@ -342,15 +385,20 @@ fun ProfitByProductScreen(db: AppDatabase, branchId: String) {
 fun ProfitByCategoryScreen(db: AppDatabase, branchId: String) {
     var period by remember { mutableStateOf(30) }
     var rows by remember { mutableStateOf<List<CategoryProfit>>(emptyList()) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(period) {
         val from = if (period == 0) isoDaysAgo(3650) else isoDaysAgo(period.toLong())
-        rows = db.analyticsDao().profitByCategory(branchId, from, isoDaysAgo(-1))
+        val r = runCatching { db.analyticsDao().profitByCategory(branchId, from, isoDaysAgo(-1)) }
+        if (r.isSuccess) rows = r.getOrThrow()
+        else loadError = r.exceptionOrNull()?.message ?: "unknown error"
     }
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         AnalyticsHeader("Profit by Category",
             "Which business lines make the real money")
         PeriodChips(period) { period = it }
         Spacer(Modifier.height(8.dp))
+        LoadError(loadError)
+        if (loadError != null) return@Column
         if (rows.isEmpty()) { EmptyNote("No sales in this period yet."); return@Column }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             lazyListItems(rows) { r ->
@@ -379,12 +427,17 @@ fun ProfitByCategoryScreen(db: AppDatabase, branchId: String) {
 fun SalesChartsScreen(db: AppDatabase, branchId: String) {
     var daily by remember { mutableStateOf<List<DayTotal>>(emptyList()) }
     var monthly by remember { mutableStateOf<List<MonthTotal>>(emptyList()) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        daily = db.analyticsDao().dailyTotals(branchId, isoDaysAgo(29), isoDaysAgo(-1))
-        monthly = db.analyticsDao().monthlyTotals(branchId, isoMonthsAgo(11), isoDaysAgo(-1))
+        runCatching {
+            daily = db.analyticsDao().dailyTotals(branchId, isoDaysAgo(29), isoDaysAgo(-1))
+            monthly = db.analyticsDao().monthlyTotals(branchId, isoMonthsAgo(11), isoDaysAgo(-1))
+        }.onFailure { loadError = it.message ?: "unknown error" }
     }
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         AnalyticsHeader("Sales Charts", "How sales are trending — daily and monthly")
+        LoadError(loadError)
+        if (loadError != null) return@Column
         if (daily.isEmpty() && monthly.isEmpty()) {
             EmptyNote("No sales yet — charts appear after the first sale.")
             return@Column

@@ -96,6 +96,10 @@ fun DeryAccountApp() {
     var sessionState by remember { mutableStateOf<Pair<String, String>?>(null) } // userId + branchId
     var role by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
+        com.derycode.deryaccount.util.AutoUpdate.uploadCrashLogs(context)
+        session.role.collect { r -> if (r != null) role = r }
+    }
+    LaunchedEffect(Unit) {
         session.supabaseConfig()?.let { (url, key) -> SupabaseClient.init(url, key) }
         combine(session.userId, session.branchId) { uid, bid -> uid to bid }
             .collect { (uid, bid) ->

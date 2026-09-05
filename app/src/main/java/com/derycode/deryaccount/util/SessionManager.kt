@@ -100,6 +100,7 @@ class SessionManager(private val context: Context) {
     }
 
     val userId: Flow<String?> = context.dataStore.data.map { it[KEY_USER] }
+    val role: Flow<String?> = context.dataStore.data.map { it[KEY_ROLE] }
     val branchId: Flow<String?> = context.dataStore.data.map { it[KEY_BRANCH] }
 
     suspend fun saveLogin(userId: String, username: String, role: String, branchId: String, branchName: String) {

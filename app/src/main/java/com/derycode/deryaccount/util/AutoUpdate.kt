@@ -98,6 +98,46 @@ object AutoUpdate {
     }
 
     // ----------------------------------------------------------------
+    // Crash upload: on next launch, quietly send saved crash logs to
+    // support so bugs can be fixed without asking the shop owner to
+    // copy files. Never throws; deletes a log only after it uploaded.
+    // ----------------------------------------------------------------
+    private const val CRASH_URL =
+        "https://superagent-d41c313d.base44.app/functions/saveDeryAccountCrash"
+
+    fun uploadCrashLogs(context: Context) {
+        Thread {
+            try {
+                val dir = File(DeviceStore.baseDir(context), "crashes") ?: return@Thread
+                if (!dir.isDirectory) return@Thread
+                val version = try {
+                    context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
+                } catch (_: Exception) { "?" }
+                val device = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} (API ${android.os.Build.VERSION.SDK_INT})"
+                dir.listFiles { f -> f.name.startsWith("crash_") }?.forEach { f ->
+                    try {
+                        val report = f.readText()
+                        val conn = URL(CRASH_URL).openConnection() as HttpURLConnection
+                        conn.connectTimeout = 8000
+                        conn.readTimeout = 15000
+                        conn.requestMethod = "POST"
+                        conn.setRequestProperty("Content-Type", "application/json")
+                        conn.doOutput = true
+                        val payload = org.json.JSONObject()
+                            .put("report", "[$version] $report")
+                            .put("device", device)
+                            .put("appVersion", version)
+                        conn.outputStream.use { it.write(payload.toString().toByteArray()) }
+                        val ok = conn.responseCode == 200
+                        conn.disconnect()
+                        if (ok) f.delete()   // uploaded — remove so we never send twice
+                    } catch (_: Exception) { }
+                }
+            } catch (_: Exception) { }
+        }.start()
+    }
+
+    // ----------------------------------------------------------------
     // Crash safety net: log any unexpected crash to the DeryAccount
     // folder so it can be diagnosed, then let Android handle it.
     // ----------------------------------------------------------------
