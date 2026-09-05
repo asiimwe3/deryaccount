@@ -39,6 +39,7 @@ import com.derycode.deryaccount.ui.shift.ShiftScreen
 import com.derycode.deryaccount.ui.books.BooksScreen
 import com.derycode.deryaccount.accounting.AccountingRepo
 import com.derycode.deryaccount.ui.settings.MoreScreen
+import com.derycode.deryaccount.ui.profile.UserProfileScreen
 import com.derycode.deryaccount.ui.home.HomeScreen
 import com.derycode.deryaccount.ui.sales.SalesScreen
 import com.derycode.deryaccount.ui.theme.DeryAccountTheme
@@ -161,6 +162,8 @@ fun DeryAccountApp() {
         Triple("inventory", "Stock", Icons.Default.Inventory2),
         Triple("books", "Books of Account", Icons.AutoMirrored.Filled.MenuBook),
         Triple("reports", "Reports", Icons.Default.BarChart),
+        Triple("subscription", "Subscription", Icons.Default.Verified),
+        Triple("profile", "My Profile", Icons.Default.Person),
         Triple("more", "More", Icons.Default.Menu)
     )
     ModalNavigationDrawer(
@@ -316,7 +319,11 @@ fun DeryAccountApp() {
             }
             composable("subscription") {
                 com.derycode.deryaccount.ui.subscription.SubscriptionScreen(
+                    session,
                     onBack = { navController.popBackStack() })
+            }
+            composable("profile") {
+                UserProfileScreen(session)
             }
         }
     }
@@ -334,6 +341,7 @@ private fun appTitle(route: String?): String = when (route) {
     "expenses" -> "Expenses"
     "customers" -> "Customers"
     "subscription" -> "Subscription & Pricing"
+    "profile" -> "My Profile"
     "shift" -> "Shift"
     "more" -> "More"
     else -> "DeryAccount"

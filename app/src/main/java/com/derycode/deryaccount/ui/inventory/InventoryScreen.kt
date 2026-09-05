@@ -7,7 +7,15 @@ package com.derycode.deryaccount.ui.inventory
  * via DbSafety (storage checks + error logging to DeryAccount/crashes).
  */
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import com.derycode.deryaccount.util.ProductImages
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,6 +54,7 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
     var detailProduct by remember { mutableStateOf<Product?>(null) }
     var showCount by remember { mutableStateOf(false) }
     var filter by remember { mutableStateOf("ALL") }
+    var subFilter by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
@@ -63,12 +72,14 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
     }
     val in30 = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
         .format(java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_MONTH, 30) }.time)
-    val filtered = when (filter) {
+    var filtered = when (filter) {
         "LOW" -> searched.filter { it.stockQty <= it.lowStockAlert && it.stockQty > 0 }
         "OUT" -> searched.filter { it.stockQty <= 0 }
         "EXPIRING" -> searched.filter { it.expiryDate != null && it.expiryDate!! <= in30 }
         else -> searched
     }
+    val subcategories = products.map { it.subcategory }.filter { it.isNotBlank() }.distinct().sorted()
+    if (subFilter != null) filtered = filtered.filter { it.subcategory == subFilter }
 
     Scaffold(
         floatingActionButton = {
@@ -98,6 +109,25 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
                         onClick = { filter = key },
                         label = { Text(label, fontSize = 11.sp, maxLines = 1) }
                     )
+                }
+            }
+            if (subcategories.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item {
+                        FilterChip(
+                            selected = subFilter == null,
+                            onClick = { subFilter = null },
+                            label = { Text("All groups", fontSize = 11.sp) }
+                        )
+                    }
+                    items(subcategories) { sub ->
+                        FilterChip(
+                            selected = subFilter == sub,
+                            onClick = { subFilter = if (subFilter == sub) null else sub },
+                            label = { Text(sub, fontSize = 11.sp) }
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -304,7 +334,8 @@ private fun ProductRow(p: Product, onOpen: () -> Unit, onAdjust: (Double) -> Uni
         headlineContent = { Text(p.name, fontWeight = FontWeight.SemiBold) },
         supportingContent = {
             Column {
-                Text("${p.category} · ${p.barcode ?: "no barcode"} · cost %,d".format(p.costPrice.toLong()),
+                Text((listOf(p.category, p.subcategory).filter { it.isNotBlank() }
+                    .joinToString(" · ")) + " · ${p.barcode ?: "no barcode"} · cost %,d".format(p.costPrice.toLong()),
                     fontSize = 12.sp)
                 if (p.expiryDate != null) {
                     val expired = p.expiryDate!! < nowYmd()
@@ -315,7 +346,13 @@ private fun ProductRow(p: Product, onOpen: () -> Unit, onAdjust: (Double) -> Uni
                 }
             }
         },
-        leadingContent = { Icon(Icons.Default.Inventory2, null) },
+        leadingContent = {
+            val img = ProductImages.load(p.imagePath)
+            if (img != null) {
+                Image(img, null, Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop)
+            } else Icon(Icons.Default.Inventory2, null)
+        },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(0.dp)) {
@@ -361,7 +398,19 @@ private fun EditProductDialog(db: AppDatabase, p: Product, onDone: () -> Unit) {
     var alert by remember { mutableStateOf(p.lowStockAlert.toLong().toString()) }
     var reorder by remember { mutableStateOf(if (p.reorderLevel > 0) p.reorderLevel.toLong().toString() else "") }
     var expiry by remember { mutableStateOf(p.expiryDate ?: "") }
+    var subcat by remember { mutableStateOf(p.subcategory) }
+    var photoPath by remember { mutableStateOf(p.imagePath) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            val saved = ProductImages.save(context, uri)
+            if (saved != null) {
+                if (photoPath != null && photoPath != p.imagePath) ProductImages.delete(photoPath)
+                photoPath = saved
+            }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDone,
@@ -392,6 +441,28 @@ private fun EditProductDialog(db: AppDatabase, p: Product, onDone: () -> Unit) {
                     OutlinedTextField(expiry, { expiry = it }, label = { Text("Expiry date (YYYY-MM-DD)") },
                         singleLine = true, modifier = Modifier.weight(1f))
                 }
+                OutlinedTextField(subcat, { subcat = it },
+                    label = { Text("Sub-category (e.g. Grains & Staples)") }, singleLine = true)
+                // photo picker + preview
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { photoPicker.launch("image/*") }) {
+                        Icon(Icons.Default.Image, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp)); Text("Photo", fontSize = 12.sp)
+                    }
+                    val img = ProductImages.load(photoPath)
+                    if (img != null) {
+                        Image(img, null, Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop)
+                        TextButton(onClick = {
+                            if (photoPath != p.imagePath) ProductImages.delete(photoPath)
+                            photoPath = null
+                        }) { Text("Remove", fontSize = 12.sp) }
+                    } else {
+                        Text("No photo", fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         },
         confirmButton = {
@@ -411,6 +482,8 @@ private fun EditProductDialog(db: AppDatabase, p: Product, onDone: () -> Unit) {
                             name = name.ifBlank { p.name },
                             retailPrice = pr, costPrice = cs, stockQty = q,
                             lowStockAlert = al, reorderLevel = rl, expiryDate = exp,
+                            subcategory = subcat.trim(),
+                            imagePath = photoPath,
                             updatedAt = now))
                         if (delta != 0.0) {
                             db.stockMovementDao().upsert(
@@ -455,7 +528,14 @@ private fun AddProductDialog(db: AppDatabase, branchId: String, onDone: () -> Un
     var cost by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var stock by remember { mutableStateOf("") }
+    var subcat by remember { mutableStateOf("") }
+    var photoPath by remember { mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val photoPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) photoPath = ProductImages.save(context, uri) ?: photoPath
+    }
 
     AlertDialog(
         onDismissRequest = onDone,
@@ -467,6 +547,23 @@ private fun AddProductDialog(db: AppDatabase, branchId: String, onDone: () -> Un
                 OutlinedTextField(cost, { cost = it }, label = { Text("Cost price (UGX)") }, singleLine = true)
                 OutlinedTextField(price, { price = it }, label = { Text("Selling price (UGX)") }, singleLine = true)
                 OutlinedTextField(stock, { stock = it }, label = { Text("Opening stock") }, singleLine = true)
+                OutlinedTextField(subcat, { subcat = it },
+                    label = { Text("Sub-category (optional)") }, singleLine = true)
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { photoPicker.launch("image/*") }) {
+                        Icon(Icons.Default.Image, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp)); Text("Add photo", fontSize = 12.sp)
+                    }
+                    val img = ProductImages.load(photoPath)
+                    if (img != null) {
+                        Image(img, null, Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop)
+                        TextButton(onClick = {
+                            ProductImages.delete(photoPath); photoPath = null
+                        }) { Text("Remove", fontSize = 12.sp) }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -481,7 +578,8 @@ private fun AddProductDialog(db: AppDatabase, branchId: String, onDone: () -> Un
                     db.withTransaction {
                         db.productDao().upsert(Product(
                             id = id, name = name, barcode = barcode.ifBlank { null },
-                            category = "General", unit = "pcs",
+                            category = "General", subcategory = subcat.trim(),
+                            imagePath = photoPath, unit = "pcs",
                             costPrice = cost.toDoubleOrNull() ?: 0.0,
                             retailPrice = price.toDoubleOrNull() ?: 0.0,
                             wholesalePrice = null, taxRate = 0.0,

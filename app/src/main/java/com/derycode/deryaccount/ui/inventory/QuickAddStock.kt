@@ -109,6 +109,7 @@ private suspend fun AppDatabase.createProducts(
         val id = UUID.randomUUID().toString()
         productDao().upsert(Product(
             id = id, name = p.item.name, barcode = null, category = category,
+            subcategory = p.item.subcategory, imagePath = null,
             unit = p.item.unit, costPrice = p.cost, retailPrice = p.item.price,
             wholesalePrice = null, stockQty = p.qty, lowStockAlert = 5.0,
             expiryDate = null, branchId = branchId, createdAt = now, updatedAt = now
@@ -172,7 +173,9 @@ private fun ItemPicker(
     onAdd: (List<Picked>, String, Double, Double, Double) -> Unit,
     onBack: () -> Unit
 ) {
-    val catalog = remember(category) { BusinessCatalog.itemsFor(category) }
+    val catalog = remember(category) {
+        BusinessCatalog.itemsFor(category).sortedBy { it.subcategory }
+    }
     var selected by remember { mutableStateOf(setOf<Int>()) }
     val prices = remember { mutableStateMapOf<Int, String>() }
     val costs = remember { mutableStateMapOf<Int, String>() }
@@ -194,6 +197,13 @@ private fun ItemPicker(
                     items(catalog.size) { i ->
                         val ci = catalog[i]
                         val isSel = i in selected
+                        if (ci.subcategory.isNotBlank() &&
+                            (i == 0 || catalog[i - 1].subcategory != ci.subcategory)) {
+                            Text(ci.subcategory.uppercase(), fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+                        }
                         Column(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(checked = isSel, onCheckedChange = { on ->
@@ -312,7 +322,7 @@ private fun ItemPicker(
                         ?: return@mapNotNull null
                     val cost = (costs[i] ?: pr.toString()).toDoubleOrNull() ?: pr
                     val q = (qtys[i] ?: "0").toDoubleOrNull() ?: 0.0
-                    Picked(BusinessCatalog.CatalogItem(ci.name, ci.unit, pr), q, cost)
+                    Picked(BusinessCatalog.CatalogItem(ci.name, ci.unit, pr, ci.subcategory), q, cost)
                 }
                 onAdd(chosen, customName,
                     customPrice.toDoubleOrNull() ?: 0.0,

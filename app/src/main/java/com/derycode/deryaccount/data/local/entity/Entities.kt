@@ -54,6 +54,8 @@ data class Product(
     val name: String,
     val barcode: String?,          // may be null for weighed/loose items
     val category: String,
+    val subcategory: String = "",   // e.g. "Grains & Staples" inside General Shop
+    val imagePath: String? = null,  // local photo file — shown on POS tiles offline
     val unit: String = "pcs",      // pcs, kg, l, pkt, crate...
     val costPrice: Double,         // purchase price per unit
     val retailPrice: Double,       // retail price per unit

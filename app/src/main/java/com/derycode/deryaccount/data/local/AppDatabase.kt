@@ -23,7 +23,7 @@ import com.derycode.deryaccount.data.local.entity.*
         Account::class, JournalEntry::class, JournalLine::class,
         HeldSale::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -100,6 +100,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v5 → v6: products.subcategory + products.imagePath (photos & subcategories). */
+        private val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE products ADD COLUMN subcategory TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE products ADD COLUMN imagePath TEXT")
+            }
+        }
+
         @Volatile private var INSTANCE: AppDatabase? = null
 
         /**
@@ -133,7 +141,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // v2 -> v3: favourites column + held_sales table.
                     // MUST ship as a real migration — a destructive fallback here
                     // would WIPE every shop's books on update.
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     // Kept only as a last resort for pre-accounting installs (DB v1).
                     .fallbackToDestructiveMigration()
                     .build()

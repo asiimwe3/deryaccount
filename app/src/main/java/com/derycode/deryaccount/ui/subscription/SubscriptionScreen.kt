@@ -3,11 +3,10 @@ package com.derycode.deryaccount.ui.subscription
 /**
  * SubscriptionScreen — DeryAccount Pricing.
  * Shows the 4 subscription tiers (Starter, Business, Professional,
- * Multi-Branch), the current plan/trial status, an activation-code
- * entry box, and "Choose <Plan>" buttons that open WhatsApp to DeryCode
- * support with a pre-filled request (no in-app payment — the app is
- * offline-first, so billing happens over mobile money / bank and a
- * code is sent back to unlock the plan).
+ * Multi-Branch), the current plan/trial status, an activation-code entry
+ * box, and a full in-app payment flow: choose plan + duration → pay with
+ * MTN MoMo / Airtel Money on PesaPal → the code arrives and activates
+ * automatically. WhatsApp support stays as a fallback for bank payments.
  */
 
 import android.content.Intent
@@ -31,6 +30,12 @@ import com.derycode.deryaccount.billing.ActivationResult
 import com.derycode.deryaccount.billing.LicenseManager
 import com.derycode.deryaccount.billing.PlanTier
 import com.derycode.deryaccount.ui.theme.*
+import com.derycode.deryaccount.util.PaymentApi
+import com.derycode.deryaccount.util.SessionManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val SUPPORT_WHATSAPP = "256762306675"
 
@@ -50,13 +55,22 @@ private fun planIcon(plan: PlanTier) = when (plan) {
 
 private fun money(v: Long) = "UGX %,d".format(v)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SubscriptionScreen(onBack: () -> Unit = {}) {
+fun SubscriptionScreen(session: SessionManager, onBack: () -> Unit = {}) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
     var state by remember { mutableStateOf(LicenseManager.state(context)) }
     var code by remember { mutableStateOf("") }
     var activateMsg by remember { mutableStateOf<String?>(null) }
     var activateOk by remember { mutableStateOf(false) }
+    var payPlan by remember { mutableStateOf<PlanTier?>(null) }
+
+    // profile phone (prefill for MoMo) — falls back to the business phone
+    val profile by session.userProfile.collectAsState(initial = null)
+    val biz by session.businessProfile.collectAsState(initial = null)
+    val prefillPhone = profile?.phone?.takeIf { it.isNotBlank() }
+        ?: biz?.phone ?: ""
 
     Column(
         Modifier.fillMaxSize().background(DaBlack)
@@ -92,6 +106,31 @@ fun SubscriptionScreen(onBack: () -> Unit = {}) {
         }
         Spacer(Modifier.height(10.dp))
 
+        // ---- resume a pending payment from a previous session ----
+        PaymentApi.pendingOrder(context)?.let { (trackingId, planCode, amount) ->
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = DaBlue.copy(alpha = 0.14f)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, DaBlue.copy(alpha = 0.5f))
+            ) {
+                Row(Modifier.padding(12.dp).fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.HourglassTop, null, tint = DaBlue)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Unfinished payment", fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold, color = DaTextPrimary)
+                        Text("A ${money(amount)} order is waiting. Tap check after paying.",
+                            fontSize = 12.sp, color = DaTextMuted)
+                    }
+                    Button(onClick = {
+                        payPlan = PlanTier.byCode(planCode) ?: PlanTier.BUSINESS
+                    }) { Text("Check") }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+
         // ---- founding 100 banner ----
         Card(
             Modifier.fillMaxWidth(),
@@ -112,12 +151,7 @@ fun SubscriptionScreen(onBack: () -> Unit = {}) {
             PlanCard(
                 plan = plan,
                 isCurrent = state.effectivePlan == plan && (state.isLicensed || state.isTrial),
-                onChoose = {
-                    val msg = "Hi DeryCode, I'd like to subscribe to the ${plan.displayName} plan " +
-                        "for DeryAccount (${money(plan.monthlyUgx)}/month or " +
-                        "${money(plan.foundingYearlyUgx)}/year Founding 100 offer). Please send payment details."
-                    openWhatsApp(context, SUPPORT_WHATSAPP, msg)
-                }
+                onChoose = { payPlan = plan }
             )
             Spacer(Modifier.height(12.dp))
         }
@@ -179,6 +213,250 @@ fun SubscriptionScreen(onBack: () -> Unit = {}) {
         }
         Spacer(Modifier.height(24.dp))
     }
+
+    // ---- the payment sheet ----
+    payPlan?.let { plan ->
+        PaySheet(
+            plan = plan,
+            prefillPhone = prefillPhone,
+            payerName = profile?.name ?: "",
+            onActivated = {
+                state = LicenseManager.state(context)
+                payPlan = null
+            },
+            onDismiss = { payPlan = null }
+        )
+    }
+}
+
+/**
+ * PaySheet — the mobile-money payment flow:
+ *   pick duration → confirm phone → open PesaPal page →
+ *   auto-poll status → activation code arrives → plan unlocks.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PaySheet(plan: PlanTier, prefillPhone: String, payerName: String,
+                     onActivated: () -> Unit, onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var months by remember { mutableStateOf(1) }
+    var phone by remember { mutableStateOf(prefillPhone) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var success by remember { mutableStateOf(false) }
+    var order by remember { mutableStateOf<PaymentApi.OrderCreated?>(null) }
+
+    val amount = when (months) {
+        12 -> plan.foundingYearlyUgx
+        else -> plan.monthlyUgx * months
+    }
+
+    // one status poll, off the main thread
+    suspend fun checkOnce(): PaymentApi.StatusResult? {
+        val tid = order?.orderTrackingId ?: return null
+        return withContext(Dispatchers.IO) { PaymentApi.checkStatus(context, tid) }
+    }
+
+    // apply a completed payment: activate the code, clear the pending order
+    suspend fun applyCompleted(r: PaymentApi.StatusResult) {
+        when (val a = LicenseManager.activate(context, r.activationCode!!)) {
+            is ActivationResult.Success -> {
+                PaymentApi.clearPending(context)
+                success = true
+                message = "${a.plan.displayName} activated until ${shortDate(a.expiresAt)} ✓"
+            }
+            else -> message = "Payment received, but the code failed. " +
+                "Contact support with reference " + pendingRef(order) + "."
+        }
+    }
+
+    suspend fun manualCheck() {
+        when (val r = checkOnce()) {
+            null -> message = "Couldn't reach the server — check your internet."
+            else -> when {
+                r.status == "COMPLETED" && r.activationCode != null -> applyCompleted(r)
+                r.status == "FAILED" || r.status == "INVALID" ->
+                    message = "The payment did not go through — please try again."
+                else -> message = "Not confirmed yet — approve the prompt on $phone, then check again."
+            }
+        }
+    }
+
+    // resume from a pending order of this same plan (kept across app restarts)
+    LaunchedEffect(Unit) {
+        val pending = PaymentApi.pendingOrder(context)
+        if (pending != null && pending.second == plan.code) {
+            order = PaymentApi.OrderCreated("", pending.first, "", pending.third)
+        }
+    }
+
+    // auto-poll while the payment is being made (every 5s, quietly)
+    LaunchedEffect(order?.orderTrackingId, success) {
+        val tid = order?.orderTrackingId ?: return@LaunchedEffect
+        if (success) return@LaunchedEffect
+        while (true) {
+            delay(5000)
+            val r = checkOnce()
+            if (r?.status == "COMPLETED" && r.activationCode != null) {
+                applyCompleted(r)
+                break
+            } else if (r?.status == "FAILED" || r?.status == "INVALID") {
+                message = "The payment did not go through — please try again."
+                break
+            }
+        }
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(horizontal = 18.dp).padding(bottom = 24.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(planIcon(plan), null, tint = planColor(plan))
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text("${plan.displayName} plan", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("Pay with MTN MoMo or Airtel Money via PesaPal",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+
+            if (success) {
+                Card(colors = CardDefaults.cardColors(
+                    containerColor = DaGreen.copy(alpha = 0.16f))) {
+                    Column(Modifier.padding(14.dp).fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.CheckCircle, null, tint = DaGreen,
+                            modifier = Modifier.size(40.dp))
+                        Spacer(Modifier.height(6.dp))
+                        Text(message ?: "Payment complete ✓", fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Spacer(Modifier.height(10.dp))
+                        Button(onClick = onActivated, modifier = Modifier.fillMaxWidth()) {
+                            Text("Done")
+                        }
+                    }
+                }
+            } else if (order != null) {
+                // ---- waiting for the money ----
+                Card(colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                    Column(Modifier.padding(14.dp).fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(modifier = Modifier.size(34.dp))
+                        Spacer(Modifier.height(8.dp))
+                        Text("Waiting for your payment…", fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold)
+                        Text(
+                            if (order!!.redirectUrl.isBlank())
+                                "Approve the mobile money prompt on $phone, then tap Check."
+                            else "We opened the payment page. Approve the prompt on $phone " +
+                                "or finish on the PesaPal page — this screen updates itself.",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { scope.launch { manualCheck() } }) {
+                                Text("Check now")
+                            }
+                            if (order!!.redirectUrl.isNotBlank()) {
+                                Button(onClick = { openBrowser(context, order!!.redirectUrl) }) {
+                                    Text("Open payment page")
+                                }
+                            }
+                        }
+                    }
+                }
+                message?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, fontSize = 12.sp, color = DaRed)
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = {
+                    // keep the pending order — it can be resumed from the banner
+                    onDismiss()
+                }) { Text("Close and check later") }
+            } else {
+                // ---- pick duration + phone ----
+                Text("How long?", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(1, 3, 6, 12).forEach { m ->
+                        FilterChip(
+                            selected = months == m,
+                            onClick = { months = m },
+                            label = {
+                                Text(if (m == 12) "12 mo (yearly, 17% off)" else "$m month${if (m > 1) "s" else ""}",
+                                    fontSize = 11.sp)
+                            })
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text("You pay", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(money(amount), fontSize = 30.sp, fontWeight = FontWeight.ExtraBold,
+                    color = planColor(plan))
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = phone, onValueChange = { phone = it },
+                    label = { Text("Phone number (MoMo / Airtel)") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        busy = true
+                        message = null
+                        scope.launch {
+                            val created = withContext(Dispatchers.IO) {
+                                PaymentApi.createOrder(context, plan.code, months,
+                                    phone, payerName)
+                            }
+                            busy = false
+                            if (created == null) {
+                                message = "Couldn't reach the payment server. Check your internet " +
+                                    "connection and try again."
+                            } else {
+                                PaymentApi.savePending(context, created, plan.code, months)
+                                order = created
+                                openBrowser(context, created.redirectUrl)
+                            }
+                        }
+                    },
+                    enabled = !busy && phone.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                ) {
+                    if (busy) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Pay ${money(amount)} with Mobile Money",
+                            fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                }
+                message?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(it, fontSize = 12.sp, color = DaRed)
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = {
+                    val msg = "Hi DeryCode, I'd like to subscribe to the ${plan.displayName} plan " +
+                        "for DeryAccount (${money(amount)}). Please send payment details."
+                    openWhatsApp(context, SUPPORT_WHATSAPP, msg)
+                }) { Text("Prefer bank transfer? Chat support on WhatsApp",
+                    fontSize = 12.sp) }
+            }
+        }
+    }
+
+}
+
+private fun pendingRef(order: PaymentApi.OrderCreated?): String =
+    order?.merchantRef?.takeIf { it.isNotBlank() } ?: "your phone number"
+
+private fun openBrowser(context: android.content.Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    } catch (_: Exception) { }
 }
 
 @Composable

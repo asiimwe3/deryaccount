@@ -27,6 +27,9 @@ class SessionManager(private val context: Context) {
         val KEY_SB_URL = stringPreferencesKey("supabase_url")
         val KEY_SB_KEY = stringPreferencesKey("supabase_anon_key")
         val KEY_TUTORIAL_DONE = stringPreferencesKey("tutorial_done")
+        val KEY_PROFILE_NAME = stringPreferencesKey("profile_name")
+        val KEY_PROFILE_PHONE = stringPreferencesKey("profile_phone")
+        val KEY_PROFILE_EMAIL = stringPreferencesKey("profile_email")
         val KEY_BIZ_NAME = stringPreferencesKey("biz_name")
         val KEY_BIZ_TAGLINE = stringPreferencesKey("biz_tagline")
         val KEY_BIZ_PHONE = stringPreferencesKey("biz_phone")
@@ -67,6 +70,27 @@ class SessionManager(private val context: Context) {
             it[KEY_BIZ_LOCATION] = profile.location
             it[KEY_BIZ_TIN] = profile.tin
             it[KEY_BIZ_FOOTER] = profile.footer
+        }
+    }
+
+    /** The account owner's personal profile (who pays / who to greet). */
+    data class UserProfile(
+        val name: String = "",
+        val phone: String = "",
+        val email: String = ""
+    )
+
+    val userProfile: Flow<UserProfile?> = context.dataStore.data.map {
+        val n = it[KEY_PROFILE_NAME]
+        if (n.isNullOrBlank()) null else UserProfile(
+            name = n, phone = it[KEY_PROFILE_PHONE] ?: "", email = it[KEY_PROFILE_EMAIL] ?: "")
+    }
+
+    suspend fun saveUserProfile(profile: UserProfile) {
+        context.dataStore.edit {
+            it[KEY_PROFILE_NAME] = profile.name
+            it[KEY_PROFILE_PHONE] = profile.phone
+            it[KEY_PROFILE_EMAIL] = profile.email
         }
     }
 

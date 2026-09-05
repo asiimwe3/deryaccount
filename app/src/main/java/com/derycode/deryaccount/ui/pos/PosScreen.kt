@@ -32,6 +32,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.derycode.deryaccount.data.local.entity.Product
 import com.derycode.deryaccount.ui.theme.*
+import com.derycode.deryaccount.util.ProductImages
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
 import com.derycode.deryaccount.util.PdfExport
 import kotlinx.coroutines.launch
 import java.io.File
@@ -67,6 +70,9 @@ fun PosScreen(
     var selectedCategory by remember { mutableStateOf("All") }
     var gridMode by remember { mutableStateOf(true) }
     var categoryMenuOpen by remember { mutableStateOf(false) }
+    var selectedSubcategory by remember { mutableStateOf<String?>(null) }
+    // changing the top category clears the sub-category filter
+    androidx.compose.runtime.LaunchedEffect(selectedCategory) { selectedSubcategory = null }
 
     // Lightweight, best-effort connectivity display — the app itself never depends on it
     var online by remember { mutableStateOf(false) }
@@ -277,12 +283,38 @@ fun PosScreen(
         }
         Spacer(Modifier.height(6.dp))
 
+        // ---- Sub-category chips (only when a category is picked) ----
+        val subcategories = remember(catalog, selectedCategory) {
+            if (selectedCategory == "All") emptyList()
+            else catalog.filter { it.category == selectedCategory }
+                .map { it.subcategory }.filter { it.isNotBlank() }.distinct().sorted()
+        }
+        if (subcategories.isNotEmpty()) {
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                item {
+                    FilterChip(selected = selectedSubcategory == null,
+                        onClick = { selectedSubcategory = null },
+                        label = { Text("All sub-groups", fontSize = 11.sp) })
+                }
+                lazyListItems(subcategories) { sub ->
+                    FilterChip(selected = selectedSubcategory == sub,
+                        onClick = { selectedSubcategory = if (selectedSubcategory == sub) null else sub },
+                        label = { Text(sub, fontSize = 11.sp) })
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+        }
+
         // ---- Product count + Grid/List toggle ----
-        val filtered = remember(catalog, selectedCategory, ui.searchResults) {
+        val filtered = remember(catalog, selectedCategory, selectedSubcategory, ui.searchResults) {
             val base = if (ui.searchResults.isNotEmpty()) ui.searchResults
                        else if (selectedCategory == "All") catalog
                        else catalog.filter { it.category == selectedCategory }
-            base
+            if (selectedSubcategory != null) base.filter { it.subcategory == selectedSubcategory }
+            else base
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("Products (${filtered.size})", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
@@ -935,7 +967,14 @@ private fun ProductCard(p: Product, onAdd: (Double) -> Unit, onToggleFav: () -> 
                         .background(DaSurface2, MaterialTheme.shapes.small),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Inventory2, null, tint = DaTextMuted, modifier = Modifier.size(28.dp))
+                    val img = ProductImages.load(p.imagePath)
+                    if (img != null) {
+                        Image(img, null,
+                            Modifier.fillMaxWidth().height(56.dp),
+                            contentScale = ContentScale.Crop)
+                    } else {
+                        Icon(Icons.Default.Inventory2, null, tint = DaTextMuted, modifier = Modifier.size(28.dp))
+                    }
                 }
                 IconButton(onClick = onToggleFav, modifier = Modifier.align(Alignment.TopEnd).size(26.dp)) {
                     Icon(
