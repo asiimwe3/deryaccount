@@ -197,3 +197,8 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   1.6.0 moved the method to the base class with a different erased signature.
 - Fix: pinned androidx.compose.animation + animation-core to 1.6.7, which
   restores the exact override (verified via javap against both AARs).
+
+## v0.8.5 — fixed Sell screen crash on add-to-cart
+- PosScreen used weight(0f) for small carts — Compose forbids zero weights
+  (IllegalArgumentException) and the whole Sell screen crashed the moment a
+  cart existed with <= 3 items. Weight is now applied only when needed.

@@ -198,7 +198,11 @@ fun PosScreen(
         // ---- Cart (when items present) ----
         if (ui.cart.isNotEmpty()) {
             Surface(
-                Modifier.fillMaxWidth().weight(if (ui.cart.size > 3) 1f else 0f),
+                // weight(0f) is illegal in Compose — apply the weight only when
+                // the cart is big enough to need scrolling space.
+                Modifier.fillMaxWidth().then(
+                    if (ui.cart.size > 3) Modifier.weight(1f) else Modifier
+                ),
                 tonalElevation = 2.dp, shape = MaterialTheme.shapes.medium
             ) {
                 Column(Modifier.padding(6.dp)) {
