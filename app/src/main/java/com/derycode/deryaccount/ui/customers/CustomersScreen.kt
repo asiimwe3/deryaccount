@@ -286,6 +286,7 @@ private fun StatRow(label: String, value: String, bold: Boolean = false,
 }
 
 /** Add (existing = null) or edit (existing != null) a customer profile. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CustomerFormDialog(db: AppDatabase, existing: Customer?, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
