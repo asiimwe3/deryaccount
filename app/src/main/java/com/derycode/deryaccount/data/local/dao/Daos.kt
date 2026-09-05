@@ -63,6 +63,10 @@ interface SaleDao {
     @Query("SELECT * FROM sales WHERE id = :id")
     suspend fun get(id: String): Sale?
 
+    /** Purchase history shown on a customer's profile (most recent first). */
+    @Query("SELECT * FROM sales WHERE isDeleted = 0 AND customerId = :customerId ORDER BY soldAt DESC LIMIT 50")
+    suspend fun forCustomer(customerId: String): List<Sale>
+
     @Upsert
     suspend fun upsert(sale: Sale)
 

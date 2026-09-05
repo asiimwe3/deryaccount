@@ -336,6 +336,24 @@ class PosViewModel(
         val effectiveCustomerId = customerId ?: st.customerId
         viewModelScope.launch {
             try {
+                // ---- Credit limit guard: never let a debtor exceed their limit ----
+                if (method == "CREDIT" && effectiveCustomerId != null) {
+                    val c = db.customerDao().get(effectiveCustomerId)
+                    if (c != null && c.creditLimit > 0.0) {
+                        val projected = c.balance + st.total - amountPaid
+                        if (projected > c.creditLimit + 0.005) {
+                            _uiState.update {
+                                it.copy(
+                                    error = "Credit limit exceeded — ${c.name} would owe UGX %,d".format(projected.toLong()) +
+                                        " (limit UGX %,d".format(c.creditLimit.toLong()) +
+                                        ", already owes UGX %,d)".format(c.balance.toLong()) +
+                                        ". Take a deposit or collect a repayment first.",
+                                    pendingMethod = null, showPaymentDialog = false)
+                            }
+                            return@launch
+                        }
+                    }
+                }
                 val lines = st.cart.map { PosRepository.CartLine(it.product, it.qty, it.unitPrice) }
                 val result = repo.checkout(
                     branchId = branchId, userId = userId, lines = lines,

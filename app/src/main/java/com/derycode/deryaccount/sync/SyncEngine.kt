@@ -161,7 +161,9 @@ class SyncEngine(private val context: Context, private val db: AppDatabase) {
 
     private fun com.derycode.deryaccount.data.local.entity.Customer.toJson() = JSONObject()
         .put("id", id).put("name", name).put("phone", phone ?: JSONObject.NULL)
+        .put("address", address ?: JSONObject.NULL)
         .put("type", type).put("credit_limit", creditLimit).put("balance", balance)
+        .put("total_purchases", totalPurchases).put("total_paid", totalPaid)
         .put("created_at", createdAt).put("updated_at", updatedAt)
 
     private fun com.derycode.deryaccount.data.local.entity.Supplier.toJson() = JSONObject()

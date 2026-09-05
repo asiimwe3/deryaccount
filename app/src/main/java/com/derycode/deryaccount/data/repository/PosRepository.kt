@@ -113,10 +113,21 @@ class PosRepository(private val context: Context, private val db: AppDatabase) {
             lines.forEach {
                 db.productDao().adjustStock(it.product.id, -it.qty, now)
             }
-            // Credit sale: grows customer balance
-            if (paymentMethod == "CREDIT" && customerId != null) {
+            // Customer/debtor tracking — on EVERY sale with a customer attached:
+            //   totalPurchases grows by the sale value
+            //   credit sales grow the balance by the unpaid portion
+            //   totalPaid grows by what was actually received (deposit now, or full cash sale)
+            if (customerId != null) {
                 db.customerDao().get(customerId)?.let { c ->
-                    db.customerDao().upsert(c.copy(balance = c.balance + total, updatedAt = now, syncState = "pending"))
+                    val unpaid = if (paymentMethod == "CREDIT")
+                        (total - amountPaid).coerceAtLeast(0.0) else 0.0
+                    val receivedNow = if (paymentMethod == "CREDIT")
+                        amountPaid.coerceAtLeast(0.0) else total   // cash sale: fully settled (change returned)
+                    db.customerDao().upsert(c.copy(
+                        balance = c.balance + unpaid,
+                        totalPurchases = c.totalPurchases + total,
+                        totalPaid = c.totalPaid + receivedNow,
+                        updatedAt = now, syncState = "pending"))
                 }
             }
             // Books of account, ATOMIC with the sale itself: Dr Cash/MoMo/Debtors,

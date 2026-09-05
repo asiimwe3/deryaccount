@@ -23,7 +23,7 @@ import com.derycode.deryaccount.data.local.entity.*
         Account::class, JournalEntry::class, JournalLine::class,
         HeldSale::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -67,6 +67,32 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v3 → v4: customer profiles — address + lifetime purchase/payment stats. */
+        private val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE customers ADD COLUMN address TEXT")
+                db.execSQL("ALTER TABLE customers ADD COLUMN totalPurchases REAL NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE customers ADD COLUMN totalPaid REAL NOT NULL DEFAULT 0")
+                // Backfill lifetime stats from existing sales so profiles start accurate.
+                // totalPaid = cash paid at sale time + everything ever repaid on credit
+                // (repaid = credit issued − balance still outstanding).
+                db.execSQL("""
+                    UPDATE customers SET totalPurchases = (
+                        SELECT COALESCE(SUM(total), 0) FROM sales
+                        WHERE sales.customerId = customers.id AND sales.isDeleted = 0)
+                """.trimIndent())
+                db.execSQL("""
+                    UPDATE customers SET totalPaid =
+                        (SELECT COALESCE(SUM(amountPaid), 0) FROM sales
+                         WHERE sales.customerId = customers.id AND sales.isDeleted = 0)
+                        + (SELECT COALESCE(SUM(total), 0) FROM sales
+                           WHERE sales.customerId = customers.id
+                             AND sales.paymentMethod = 'CREDIT' AND sales.isDeleted = 0)
+                        - balance
+                """.trimIndent())
+            }
+        }
+
         @Volatile private var INSTANCE: AppDatabase? = null
 
         fun get(context: Context): AppDatabase =
@@ -79,7 +105,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // v2 -> v3: favourites column + held_sales table.
                     // MUST ship as a real migration — a destructive fallback here
                     // would WIPE every shop's books on update.
-                    .addMigrations(MIGRATION_2_3)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                     // Kept only as a last resort for pre-accounting installs (DB v1).
                     .fallbackToDestructiveMigration()
                     .build()

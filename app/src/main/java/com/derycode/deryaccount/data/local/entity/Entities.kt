@@ -76,9 +76,12 @@ data class Customer(
     @PrimaryKey val id: String,
     val name: String,
     val phone: String?,
+    val address: String? = null,    // street / village / landmark
     val type: String = "RETAIL",    // RETAIL | WHOLESALE | DISTRIBUTOR
-    val creditLimit: Double = 0.0,
-    val balance: Double = 0.0,      // outstanding credit (they owe us)
+    val creditLimit: Double = 0.0,  // 0 = no limit; POS blocks credit sales beyond it
+    val balance: Double = 0.0,      // outstanding debt (they owe us)
+    val totalPurchases: Double = 0.0, // lifetime value of ALL sales to this customer
+    val totalPaid: Double = 0.0,      // lifetime money received (cash paid + repayments)
     override val createdAt: String,
     override val updatedAt: String,
     override val syncState: String = "pending",
