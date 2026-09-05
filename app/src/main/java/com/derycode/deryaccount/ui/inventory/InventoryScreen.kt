@@ -8,6 +8,7 @@ package com.derycode.deryaccount.ui.inventory
  */
 
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,6 +33,7 @@ import kotlinx.coroutines.launch
  * InventoryScreen — live product list from local DB. Shows low stock in red.
  * Add-product dialog creates products offline (syncState=pending).
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InventoryScreen(db: AppDatabase, branchId: String) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -264,6 +266,7 @@ private fun BulkCountDialog(db: AppDatabase, branchId: String, products: List<Pr
                     Spacer(Modifier.weight(1f))
                     Button(
                         onClick = {
+                            val ctx = androidx.compose.ui.platform.LocalContext.current
                             scope.launch {
                                 busy = true
                                 try {
@@ -271,13 +274,11 @@ private fun BulkCountDialog(db: AppDatabase, branchId: String, products: List<Pr
                                         val c = counted[p.id]?.replace(",", "")?.toDoubleOrNull()
                                         if (c != null && c != p.stockQty) {
                                             StockOps.applyCount(db, branchId, p.id, c, "bulk stock count")
-                                            applied++
                                         }
                                     }
                                     onDone()
                                 } catch (e: Exception) {
-                                    com.derycode.deryaccount.util.DbSafety.log(
-                                        androidx.compose.ui.platform.LocalContext.current, "Stock count", e)
+                                    com.derycode.deryaccount.util.DbSafety.log(ctx, "Stock count", e)
                                     onError(com.derycode.deryaccount.util.DbSafety.friendly(e))
                                 }
                             }
