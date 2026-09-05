@@ -117,9 +117,13 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
                 }
                 Column(horizontalAlignment = Alignment.End) {
                 OutlinedButton(onClick = {
-                    val file = PdfExport.stockPdf(context, "My Shop",
-                        filtered.map { arrayOf(it.name, it.unit ?: "pcs",
-                            it.retailPrice.toString(), it.stockQty.toString()) })
+                    val file = PdfExport.stockTablePdf(context, "My Shop",
+                        "${filtered.size} products" +
+                            if (filter != "ALL") " ($filter filter)" else "",
+                        filtered.map {
+                            PdfExport.StockRow(it.name, it.unit ?: "pcs", it.costPrice,
+                                it.retailPrice, it.stockQty, it.stockQty <= it.lowStockAlert)
+                        })
                     try { PdfExport.printPdf(context, file, "Stock Report") } catch (_: Exception) {}
                 }) {
                     Icon(Icons.Default.Print, null); Text(" Print")
@@ -229,6 +233,7 @@ private fun BulkCountDialog(db: AppDatabase, branchId: String, products: List<Pr
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val counted = remember { androidx.compose.runtime.mutableStateMapOf<String, String>() }
     var busy by remember { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
 
     Dialog(onDismissRequest = onDone,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
@@ -266,7 +271,6 @@ private fun BulkCountDialog(db: AppDatabase, branchId: String, products: List<Pr
                     Spacer(Modifier.weight(1f))
                     Button(
                         onClick = {
-                            val ctx = androidx.compose.ui.platform.LocalContext.current
                             scope.launch {
                                 busy = true
                                 try {

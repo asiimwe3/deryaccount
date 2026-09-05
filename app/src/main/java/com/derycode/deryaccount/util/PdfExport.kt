@@ -141,6 +141,159 @@ object PdfExport {
         return render(context, "stock_${dateStamp()}.pdf", "Stock Report — $shopName", lines)
     }
 
+    // -------- professional table rendering --------
+
+    /** Table column: title, width in points, alignment (0 = left, 1 = right). */
+    data class TCol(val title: String, val width: Float, val align: Int = 0)
+
+    /** One row of a printed product table. */
+    data class StockRow(val name: String, val unit: String, val cost: Double,
+                        val price: Double, val qty: Double, val low: Boolean)
+
+    private const val ALIGN_LEFT = 0
+    private const val ALIGN_RIGHT = 1
+
+    /**
+     * Renders a ruled, shaded table — real columns with grid lines,
+     * right-aligned figures, bold headers on a dark band, repeated on
+     * every page, with footer totals.
+     */
+    fun tablePdf(context: Context, fileName: String, title: String, shopName: String,
+                 cols: List<TCol>, rows: List<List<String>>, footer: List<String>,
+                 redCells: Set<Pair<Int, Int>> = emptySet()): File {
+        val doc = PdfDocument()
+        val margin = 36f
+        val tableW = cols.sumOf { it.width.toDouble() }.toFloat()
+        val rowH = 16f
+        val headerH = 18f
+        val topY = 96f
+
+        val titleP = textPaint(16f, bold = true)
+        val subP = textPaint(9f, color = Color.GRAY)
+        val headP = textPaint(9f, bold = true, color = Color.WHITE)
+        val cellP = textPaint(9f)
+        val cellBoldP = textPaint(9f, bold = true)
+        val redP = textPaint(9f, bold = true, color = Color.rgb(180, 0, 0))
+        val footP = textPaint(10f, bold = true)
+        val gridP = Paint().apply { color = Color.rgb(180, 180, 180); strokeWidth = 0.6f }
+        val bandP = Paint().apply { color = Color.rgb(44, 44, 44); style = Paint.Style.FILL }
+        val shadeP = Paint().apply { color = Color.rgb(242, 242, 242); style = Paint.Style.FILL }
+
+        val totalW = tableW
+        var page = doc.startPage(PdfDocument.PageInfo.Builder(PAGE_W, PAGE_H, 1).create())
+        var c = page.canvas
+        var y = 40f
+        var pageNo = 1
+        var rowIdx = 0
+
+        fun drawHead() {
+            c.drawText(shopName, margin, y, titleP); y += 14f
+            c.drawText(title, margin, y, subP)
+            c.drawText(SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.US).format(Date()),
+                PAGE_W - margin - 90f, y, subP)
+            y = topY
+            // header band
+            c.drawRect(margin, y, margin + totalW, y + headerH, bandP)
+            var x = margin
+            cols.forEach { col ->
+                val tx = if (col.align == ALIGN_RIGHT) x + col.width - 4f - headP.measureText(col.title) else x + 4f
+                c.drawText(col.title, tx, y + headerH - 5f, headP)
+                x += col.width
+            }
+            y += headerH
+        }
+
+        fun finishPage(number: Int) {
+            c.drawText("Page $number", PAGE_W - margin - 40f, PAGE_H - 28f, subP)
+            doc.finishPage(page)
+        }
+
+        drawHead()
+        rows.forEachIndexed { i, r ->
+            if (y + rowH > PAGE_H - 70) {
+                finishPage(pageNo); pageNo++
+                page = doc.startPage(PdfDocument.PageInfo.Builder(PAGE_W, PAGE_H, pageNo).create())
+                c = page.canvas; y = 40f
+                drawHead()
+            }
+            if (i % 2 == 1) c.drawRect(margin, y, margin + totalW, y + rowH, shadeP)
+            var x = margin
+            var truncated = r.mapIndexed { ci, v ->
+                val maxW = cols[ci].width - 8f
+                var s = v
+                while (cellP.measureText(s) > maxW && s.length > 1) s = s.dropLast(1)
+                s
+            }
+            r.forEachIndexed { ci, v ->
+                val p = if (Pair(i, ci) in redCells) redP else cellP
+                val s = truncated[ci]
+                val tx = if (cols[ci].align == ALIGN_RIGHT) x + cols[ci].width - 4f - p.measureText(s) else x + 4f
+                c.drawText(s, tx, y + rowH - 5f, p)
+                x += cols[ci].width
+            }
+            y += rowH
+            c.drawLine(margin, y, margin + totalW, y, gridP)
+        }
+        // column separators on this page's used area
+        var vx = margin
+        cols.forEach { col ->
+            c.drawLine(vx, topY, vx, y, gridP)
+            vx += col.width
+        }
+        c.drawLine(vx, topY, vx, y, gridP)
+        // footer totals
+        footer.forEach { line ->
+            if (y + 14f > PAGE_H - 40) {
+                finishPage(pageNo); pageNo++
+                page = doc.startPage(PdfDocument.PageInfo.Builder(PAGE_W, PAGE_H, pageNo).create())
+                c = page.canvas; y = 60f
+            }
+            c.drawText(line, margin, y + 12f, footP); y += 16f
+        }
+        finishPage(pageNo)
+
+        val f = File(documentsDir(context), fileName)
+        FileOutputStream(f).use { doc.writeTo(it) }
+        doc.close()
+        return f
+    }
+
+    private fun textPaint(size: Float, bold: Boolean = false, color: Int = Color.BLACK) =
+        Paint().apply {
+            textSize = size
+            typeface = if (bold) Typeface.create(Typeface.DEFAULT, Typeface.BOLD) else Typeface.DEFAULT
+            this.color = color
+            isAntiAlias = true
+        }
+
+    private fun qtyShort(v: Double): String =
+        if (v % 1.0 == 0.0) v.toLong().toString() else "%.1f".format(v)
+
+    /** Stock report as a ruled table: item, unit, cost, price, stock, value — low stock in red. */
+    fun stockTablePdf(context: Context, shopName: String, subtitle: String,
+                      rows: List<StockRow>): File {
+        val cols = listOf(
+            TCol("#", 22f), TCol("ITEM", 176f), TCol("UNIT", 42f),
+            TCol("COST UGX", 70f, ALIGN_RIGHT), TCol("PRICE UGX", 70f, ALIGN_RIGHT),
+            TCol("STOCK", 50f, ALIGN_RIGHT), TCol("VALUE UGX", 73f, ALIGN_RIGHT))
+        val cells = rows.mapIndexed { i, r ->
+            listOf("${i + 1}", r.name, r.unit,
+                "%,d".format(r.cost.toLong()), "%,d".format(r.price.toLong()),
+                qtyShort(r.qty), "%,d".format((r.qty * r.cost).toLong()))
+        }
+        val redCells = rows.mapIndexed { i, r -> if (r.low) Pair(i, 5) else null }
+            .filterNotNull().toSet()
+        val totalCost = rows.sumOf { it.qty * it.cost }
+        val totalRetail = rows.sumOf { it.qty * it.price }
+        val units = rows.sumOf { it.qty }
+        val footer = listOf(
+            "Items: ${rows.size}    Units: ${qtyShort(units)}",
+            "Stock value at cost: UGX %,d".format(totalCost.toLong()),
+            "Stock value at retail: UGX %,d".format(totalRetail.toLong()))
+        return tablePdf(context, "stock_${dateStamp()}.pdf",
+            "Stock Report — $subtitle", shopName, cols, cells, footer, redCells)
+    }
+
     /** Generic book-of-account table (cash book, trial balance, income statement...). */
     fun bookPdf(context: Context, title: String, shopName: String,
                 header: List<String>, rows: List<List<String>>, footer: List<String>): File {
