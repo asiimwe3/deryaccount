@@ -182,3 +182,10 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
 - Parser rewritten: strips the leading pipe, and any malformed line is skipped
   instead of crashing — a data typo can never take down the shop.
 - Verified: all 958 catalog items across 12 categories parse cleanly.
+
+## v0.8.3 — quantity entry always visible in Quick Stock Setup
+- The three side-by-side fields (Sell / Cost / Opening stock) were wider than
+  the dialog on normal phones — the Opening stock field was pushed off-screen
+  and could not be seen or filled. Rebuilt with flexible widths so all fields
+  always fit, plus a compact +/- stepper: one tap adds stock, no typing needed.
+- Tapping + also ticks the item automatically.

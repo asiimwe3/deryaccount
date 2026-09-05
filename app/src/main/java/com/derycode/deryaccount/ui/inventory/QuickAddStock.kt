@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material3.*
@@ -204,9 +205,12 @@ private fun ItemPicker(
                                 Text(ci.unit, fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
+                            // Prices and quantity ALWAYS fit the screen: flexible
+                            // widths + a compact +/- stepper for opening stock.
                             Row(
                                 Modifier.padding(start = 46.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 OutlinedTextField(
                                     value = prices[i] ?: ci.price.toLong().toString(),
@@ -217,7 +221,7 @@ private fun ItemPicker(
                                     label = { Text("Sell UGX", fontSize = 11.sp) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     singleLine = true,
-                                    modifier = Modifier.width(104.dp).height(52.dp)
+                                    modifier = Modifier.weight(1.2f)
                                 )
                                 OutlinedTextField(
                                     value = costs[i] ?: ci.price.toLong().toString(),
@@ -228,19 +232,42 @@ private fun ItemPicker(
                                     label = { Text("Cost UGX", fontSize = 11.sp) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     singleLine = true,
-                                    modifier = Modifier.width(104.dp).height(52.dp)
+                                    modifier = Modifier.weight(1.2f)
                                 )
-                                OutlinedTextField(
-                                    value = qtys[i] ?: "",
-                                    onValueChange = {
-                                        qtys[i] = it
-                                        if (it.toDoubleOrNull() != null) selected = selected + i
-                                    },
-                                    label = { Text("Opening stock", fontSize = 11.sp) },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                    singleLine = true,
-                                    modifier = Modifier.width(120.dp).height(52.dp)
-                                )
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(0.dp)
+                                ) {
+                                    IconButton(onClick = {
+                                        val cur = (qtys[i] ?: "0").toDoubleOrNull() ?: 0.0
+                                        val nv = (cur - 1).coerceAtLeast(0.0)
+                                        qtys[i] = if (nv % 1.0 == 0.0) nv.toLong().toString() else nv.toString()
+                                    }, modifier = Modifier.size(36.dp)) {
+                                        Icon(Icons.Default.Remove, "less stock",
+                                            tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                    OutlinedTextField(
+                                        value = qtys[i] ?: "",
+                                        onValueChange = {
+                                            qtys[i] = it
+                                            if ((it.toDoubleOrNull() ?: 0.0) > 0) selected = selected + i
+                                        },
+                                        label = { Text("Stock", fontSize = 11.sp) },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    IconButton(onClick = {
+                                        val cur = (qtys[i] ?: "0").toDoubleOrNull() ?: 0.0
+                                        val nv = cur + 1
+                                        qtys[i] = if (nv % 1.0 == 0.0) nv.toLong().toString() else nv.toString()
+                                        selected = selected + i
+                                    }, modifier = Modifier.size(36.dp)) {
+                                        Icon(Icons.Default.Add, "more stock",
+                                            tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                }
                             }
                         }
                     }
@@ -261,15 +288,15 @@ private fun ItemPicker(
                                     OutlinedTextField(customPrice, { customPrice = it },
                                         label = { Text("Sell UGX") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        singleLine = true, modifier = Modifier.width(100.dp))
+                                        singleLine = true, modifier = Modifier.weight(1f))
                                     OutlinedTextField(customCost, { customCost = it },
                                         label = { Text("Cost UGX") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        singleLine = true, modifier = Modifier.width(100.dp))
+                                        singleLine = true, modifier = Modifier.weight(1f))
                                     OutlinedTextField(customQty, { customQty = it },
                                         label = { Text("Stock") },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                        singleLine = true, modifier = Modifier.width(100.dp))
+                                        singleLine = true, modifier = Modifier.weight(1f))
                                 }
                             }
                         }
