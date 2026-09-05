@@ -4,6 +4,9 @@ import android.content.Context
 import java.io.File
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -163,7 +166,7 @@ fun MoreScreen(
         Card(Modifier.fillMaxWidth().clickable { onNavigate("subscription") }) {
             Row(Modifier.padding(16.dp).fillMaxWidth(),
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Icon(androidx.compose.material.icons.Icons.Default.Verified, null,
+                Icon(Icons.Default.Verified, null,
                     tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
@@ -175,7 +178,7 @@ fun MoreScreen(
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Icon(androidx.compose.material.icons.Icons.Default.KeyboardArrowRight, null)
+                Icon(Icons.Default.KeyboardArrowRight, null)
             }
         }
 
