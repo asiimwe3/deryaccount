@@ -111,11 +111,11 @@ abstract class AppDatabase : RoomDatabase() {
         private fun applyPendingRestore(context: Context) {
             try {
                 val dbDir = context.getDatabasePath("deryaccount.db").parentFile ?: return
-                val pending = File(dbDir, "restore_pending.db")
+                val pending = java.io.File(dbDir, "restore_pending.db")
                 if (!pending.exists() || pending.length() < 1024L) return
-                val live = File(dbDir, "deryaccount.db")
+                val live = java.io.File(dbDir, "deryaccount.db")
                 listOf("-wal", "-shm").forEach {
-                    File(dbDir, "deryaccount.db$it").delete()
+                    java.io.File(dbDir, "deryaccount.db$it").delete()
                 }
                 if (live.exists()) live.delete()
                 pending.renameTo(live)
