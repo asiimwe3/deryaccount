@@ -10,6 +10,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.PauseCircle
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,6 +52,9 @@ fun PosScreen(
     var showCalc by remember { mutableStateOf(false) }
     var showCreditPicker by remember { mutableStateOf(false) }
     var showScanner by remember { mutableStateOf(false) }
+    var showHoldDialog by remember { mutableStateOf(false) }
+    var showHeldSheet by remember { mutableStateOf(false) }
+    var discountInput by remember { mutableStateOf("") }
 
     // Auto-open the print dialog after EVERY sale (receipt saved as PDF too)
     ui.lastReceipt?.pdfPath?.let { path ->
@@ -106,6 +111,17 @@ fun PosScreen(
             },
             trailingIcon = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (ui.heldSales.isNotEmpty()) {
+                        androidx.compose.material3.BadgedBox(badge = {
+                            androidx.compose.material3.Badge {
+                                Text("${ui.heldSales.size}", fontSize = 9.sp)
+                            }
+                        }) {
+                            IconButton(onClick = { showHeldSheet = true }) {
+                                Icon(Icons.Outlined.PauseCircle, "Held sales")
+                            }
+                        }
+                    }
                     IconButton(onClick = { showCalc = true }) {
                         Icon(Icons.Default.Calculate, "Calculator")
                     }
@@ -162,10 +178,12 @@ fun PosScreen(
         ) {
             val showList = if (ui.searchResults.isNotEmpty()) ui.searchResults else catalog
             items(showList, key = { it.id }) { p ->
-                ProductTile(p, onTap = {
-                    viewModel.addProduct(p)
-                    scanInput = ""
-                })
+                ProductTile(p,
+                    onTap = {
+                        viewModel.addProduct(p)
+                        scanInput = ""
+                    },
+                    onToggleFav = { viewModel.toggleFavourite(p.id, !p.isFavourite) })
             }
         }
 
@@ -177,6 +195,27 @@ fun PosScreen(
                     Text("TOTAL", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
                     Text(fmtMoney(ui.total), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
                         color = MaterialTheme.colorScheme.primary)
+                }
+                // Discount — typed by the cashier, subtracted from the total
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Discount", fontSize = 13.sp)
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedTextField(
+                        value = discountInput,
+                        onValueChange = { raw ->
+                            discountInput = raw.filter { it.isDigit() }
+                            discountInput.toDoubleOrNull()?.let { viewModel.setDiscount(it) }
+                        },
+                        modifier = Modifier.width(130.dp).height(52.dp),
+                        placeholder = { Text("0") },
+                        singleLine = true,
+                        prefix = { Text("UGX", fontSize = 11.sp) }
+                    )
+                    Spacer(Modifier.weight(1f))
+                    if (ui.subtotal > 0 && ui.discount > 0) {
+                        Text("Subtotal ${fmtMoney(ui.subtotal)}", fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -195,6 +234,16 @@ fun PosScreen(
                         onClick = { if (ui.total > 0) showCreditPicker = true },
                         modifier = Modifier.weight(1f).height(58.dp)
                     ) { Text("Credit", fontSize = 14.sp) }
+                    // Hold: park this cart, serve the next customer
+                    OutlinedButton(
+                        onClick = { if (ui.cart.isNotEmpty()) showHoldDialog = true },
+                        modifier = Modifier.weight(1f).height(58.dp)
+                    ) {
+                        Icon(Icons.Outlined.PauseCircle, null,
+                            modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(2.dp))
+                        Text("Hold", fontSize = 12.sp)
+                    }
                 }
             }
         }
@@ -216,6 +265,16 @@ fun PosScreen(
 
     // ---- Calculator ----
     if (showCalc) CalculatorDialog(onClose = { showCalc = false })
+
+    // ---- Hold Sale ----
+    if (showHoldDialog) HoldSaleDialog(
+        onHold = { note ->
+            viewModel.holdSale(note); discountInput = ""; showHoldDialog = false
+        },
+        onDismiss = { showHoldDialog = false })
+
+    // ---- Parked carts ----
+    if (showHeldSheet) HeldSalesSheet(viewModel, onDismiss = { showHeldSheet = false })
 
     // ---- Unknown barcode → instant product creation ----
     ui.unknownBarcode?.let { code ->
@@ -266,28 +325,44 @@ fun PosScreen(
 
 /** Big tappable product button — name + price, thumb friendly. */
 @Composable
-private fun ProductTile(p: Product, onTap: () -> Unit) {
-    OutlinedButton(
-        onClick = onTap,
-        modifier = Modifier.height(84.dp),
-        contentPadding = PaddingValues(8.dp)
-    ) {
-        Column(
-            Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+private fun ProductTile(p: Product, onTap: () -> Unit, onToggleFav: () -> Unit = {}) {
+    Box(Modifier.height(84.dp)) {
+        OutlinedButton(
+            onClick = onTap,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(8.dp)
         ) {
-            Text(p.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                maxLines = 2, modifier = Modifier.padding(horizontal = 2.dp))
-            Spacer(Modifier.height(2.dp))
-            Text(fmtMoney(p.retailPrice), fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-            val left = if (p.stockQty % 1.0 == 0.0) p.stockQty.toLong() else p.stockQty
-            Text(
-                if (p.stockQty <= 0) "OUT" else "$left left",
-                fontSize = 10.sp,
-                color = if (p.stockQty <= p.lowStockAlert) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = if (p.stockQty <= p.lowStockAlert) FontWeight.Bold else FontWeight.Normal
+            Column(
+                Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(p.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 2, modifier = Modifier.padding(horizontal = 2.dp))
+                Spacer(Modifier.height(2.dp))
+                Text(fmtMoney(p.retailPrice), fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                val left = if (p.stockQty % 1.0 == 0.0) p.stockQty.toLong() else p.stockQty
+                Text(
+                    if (p.stockQty <= 0) "OUT" else "$left left",
+                    fontSize = 10.sp,
+                    color = if (p.stockQty <= p.lowStockAlert) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (p.stockQty <= p.lowStockAlert) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+        // Favourite star — top corner, floats the product to the top of the grid
+        androidx.compose.material3.IconButton(
+            onClick = onToggleFav,
+            modifier = Modifier.align(Alignment.TopEnd).size(26.dp)
+        ) {
+            androidx.compose.material3.Icon(
+                if (p.isFavourite) Icons.Filled.Star
+                else Icons.Outlined.StarBorder,
+                contentDescription = if (p.isFavourite) "Remove favourite" else "Favourite",
+                tint = if (p.isFavourite) androidx.compose.ui.graphics.Color(0xFFF5B301)
+                       else MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(16.dp)
             )
         }
     }
@@ -573,4 +648,63 @@ private fun CalculatorDialog(onClose: () -> Unit) {
         confirmButton = {},
         dismissButton = {}
     )
+}
+
+
+/** Hold Sale — park the current cart with an optional note ("blue jerrycan guy"). */
+@Composable
+private fun HoldSaleDialog(onHold: (String) -> Unit, onDismiss: () -> Unit) {
+    var note by remember { mutableStateOf("") }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Hold this sale?", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text("The cart is parked and the screen clears. Resume it any time from the pause button at the top.", fontSize = 13.sp)
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = note, onValueChange = { note = it },
+                    label = { Text("Note (optional)") },
+                    placeholder = { Text("e.g. Customer went to ATM") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = { Button(onClick = { onHold(note) }) { Text("Hold") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+/** Parked carts — resume one (current cart auto-holds) or discard it. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun HeldSalesSheet(viewModel: PosViewModel, onDismiss: () -> Unit) {
+    val ui by viewModel.uiState.collectAsState()
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(16.dp)) {
+            Text("Held sales", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.height(8.dp))
+            if (ui.heldSales.isEmpty()) {
+                Text("Nothing on hold right now.", fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            ui.heldSales.forEach { held ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(held.note, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text("${viewModel.heldLineCount(held)} items · ${held.createdAt.take(10)}",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    androidx.compose.material3.TextButton(onClick = {
+                        viewModel.resumeHeldSale(held.id); onDismiss()
+                    }) { Text("Resume", fontWeight = FontWeight.Bold) }
+                    androidx.compose.material3.TextButton(onClick = {
+                        viewModel.discardHeldSale(held.id)
+                    }) { Text("Discard", color = MaterialTheme.colorScheme.error) }
+                }
+                androidx.compose.material3.Divider()
+            }
+            Spacer(Modifier.height(20.dp))
+        }
+    }
 }

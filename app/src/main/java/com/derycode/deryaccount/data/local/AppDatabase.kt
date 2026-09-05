@@ -20,9 +20,10 @@ import com.derycode.deryaccount.data.local.entity.*
         Sale::class, SaleItem::class, StockMovement::class, Supplier::class,
         Purchase::class, PurchaseItem::class, Expense::class, CashMovement::class,
         Shift::class, StockTransfer::class,
-        Account::class, JournalEntry::class, JournalLine::class
+        Account::class, JournalEntry::class, JournalLine::class,
+        HeldSale::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -43,8 +44,29 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun syncDao(): SyncDao
     abstract fun accountDao(): AccountDao
     abstract fun journalDao(): JournalDao
+    abstract fun heldSaleDao(): HeldSaleDao
 
     companion object {
+        /** v2 → v3: add products.isFavourite + held_sales (Hold Sale). */
+        private val MIGRATION_2_3 = object : androidx.room.migration.Migration(2, 3) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                // Favourites — backfill 0 so existing products start un-starred
+                db.execSQL("ALTER TABLE products ADD COLUMN isFavourite INTEGER NOT NULL DEFAULT 0")
+                // Held (parked) carts — matches the HeldSale entity exactly
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS held_sales (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        branchId TEXT NOT NULL,
+                        userId TEXT NOT NULL,
+                        discount REAL NOT NULL,
+                        linesJson TEXT NOT NULL,
+                        note TEXT NOT NULL,
+                        createdAt TEXT NOT NULL
+                    )
+                """.trimIndent())
+            }
+        }
+
         @Volatile private var INSTANCE: AppDatabase? = null
 
         fun get(context: Context): AppDatabase =
@@ -54,6 +76,11 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "deryaccount.db"
                 )
+                    // v2 -> v3: favourites column + held_sales table.
+                    // MUST ship as a real migration — a destructive fallback here
+                    // would WIPE every shop's books on update.
+                    .addMigrations(MIGRATION_2_3)
+                    // Kept only as a last resort for pre-accounting installs (DB v1).
                     .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }

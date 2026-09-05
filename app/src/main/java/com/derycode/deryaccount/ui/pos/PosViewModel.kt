@@ -42,7 +42,8 @@ class PosViewModel(
         val pendingMethod: String? = null,
         val showPaymentDialog: Boolean = false,
         val lastReceipt: ReceiptUi? = null,
-        val error: String? = null
+        val error: String? = null,
+        val heldSales: List<com.derycode.deryaccount.data.local.entity.HeldSale> = emptyList()
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -51,9 +52,18 @@ class PosViewModel(
     /** Customers for credit sales (pick who is buying on credit). */
     val customers = db.customerDao().observeAll()
 
-    /** Full product catalog for the tap-to-sell tiles. */
+    /** Full product catalog for the tap-to-sell tiles — favourites float to the top. */
     val catalog: Flow<List<com.derycode.deryaccount.data.local.entity.Product>> =
-        db.productDao().observeBranchProducts(branchId)
+        db.productDao().catalogueForBranch(branchId)
+
+    init {
+        // Live list of parked carts (Hold Sale) — updates the badge instantly
+        viewModelScope.launch {
+            db.heldSaleDao().forBranch(branchId).collect { held ->
+                _uiState.update { it.copy(heldSales = held) }
+            }
+        }
+    }
 
     /** Quick-add: create product from an unknown barcode scan, then sell it immediately. */
     fun quickAddProduct(name: String, price: Double, cost: Double, qty: Double, barcode: String?) {
@@ -167,6 +177,71 @@ class PosViewModel(
             val newType = if (st.saleType == "RETAIL") "WHOLESALE" else "RETAIL"
             val cart = st.cart.map { l -> l.copy(unitPrice = repo.priceFor(l.product, l.qty, newType)) }
             recompute(st.copy(saleType = newType, cart = cart))
+        }
+    }
+
+    // ---- Hold Sale: park the cart, serve the next customer, resume later ----
+
+    /** Cashier parks the current cart. Empties the sale screen, keeps everything. */
+    fun holdSale(note: String) {
+        val st = _uiState.value
+        if (st.cart.isEmpty()) return
+        viewModelScope.launch {
+            // Cart lines as compact JSON: [[productId, qty, unitPrice], ...]
+            val arr = org.json.JSONArray()
+            st.cart.forEach { l ->
+                arr.put(org.json.JSONArray().put(l.product.id).put(l.qty).put(l.unitPrice))
+            }
+            val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
+                .format(java.util.Date())
+            db.heldSaleDao().insert(com.derycode.deryaccount.data.local.entity.HeldSale(
+                id = java.util.UUID.randomUUID().toString(),
+                branchId = branchId, userId = userId,
+                discount = st.discount, linesJson = arr.toString(),
+                note = note.ifBlank { "Held sale" }, createdAt = now))
+            _uiState.update { it.copy(cart = emptyList(), discount = 0.0) }
+            recompute(_uiState.value)
+        }
+    }
+
+    /** Resume a parked cart. If a cart is already open, it is auto-held first. */
+    fun resumeHeldSale(id: String) {
+        viewModelScope.launch {
+            val held = db.heldSaleDao().byId(id) ?: return@launch
+            val current = _uiState.value
+            if (current.cart.isNotEmpty()) holdSale("Auto-held")   // swap, don't destroy
+            val arr = org.json.JSONArray(held.linesJson)
+            val cart = mutableListOf<CartLineUi>()
+            for (i in 0 until arr.length()) {
+                val line = arr.getJSONArray(i)
+                val product = db.productDao().get(line.getString(0)) ?: continue  // deleted product → skip
+                cart.add(CartLineUi(product, line.getDouble(1), line.getDouble(2)))
+            }
+            _uiState.update { recompute(it.copy(cart = cart.toList(), discount = held.discount)) }
+            db.heldSaleDao().delete(id)   // one-shot: resuming clears the hold
+        }
+    }
+
+    /** Throw a parked cart away entirely. */
+    fun discardHeldSale(id: String) {
+        viewModelScope.launch { db.heldSaleDao().delete(id) }
+    }
+
+    /** How many cart lines a parked sale holds (for the sheet subtitle). */
+    fun heldLineCount(held: com.derycode.deryaccount.data.local.entity.HeldSale): Int = try {
+        org.json.JSONArray(held.linesJson).length()
+    } catch (_: Exception) { 0 }
+
+    // ---- Favourites: star fast sellers, they float to the top of the tiles ----
+    fun toggleFavourite(productId: String, fav: Boolean) {
+        viewModelScope.launch { db.productDao().setFavourite(productId, fav) }
+    }
+
+    // ---- Discount: typed by the cashier, clamped so total never goes negative ----
+    fun setDiscount(amount: Double) {
+        _uiState.update { st ->
+            val max = st.cart.sumOf { it.lineTotal }
+            recompute(st.copy(discount = amount.coerceIn(0.0, max)))
         }
     }
 

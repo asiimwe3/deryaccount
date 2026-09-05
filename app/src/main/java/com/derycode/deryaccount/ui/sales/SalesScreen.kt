@@ -29,6 +29,7 @@ import com.derycode.deryaccount.data.local.entity.SaleItem
 import com.derycode.deryaccount.ui.home.fmtUgx
 import com.derycode.deryaccount.ui.theme.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * SalesScreen — every sale made today, live from the local database.
@@ -36,6 +37,8 @@ import kotlinx.coroutines.flow.first
  */
 @Composable
 fun SalesScreen(db: AppDatabase, branchId: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val reprintScope = androidx.compose.runtime.rememberCoroutineScope()
     var sales by remember { mutableStateOf(emptyList<Sale>()) }
     var loading by remember { mutableStateOf(true) }
     var openSale by remember { mutableStateOf<Sale?>(null) }
@@ -56,7 +59,7 @@ fun SalesScreen(db: AppDatabase, branchId: String) {
     }
 
     if (openSale != null) {
-        SaleDetailsScreen(db, openSale!!, cashierNames[openSale!!.userId] ?: "—") { openSale = null }
+        SaleDetailsScreen(db, branchId, openSale!!, cashierNames[openSale!!.userId] ?: "—") { openSale = null }
         return
     }
 
@@ -84,7 +87,14 @@ fun SalesScreen(db: AppDatabase, branchId: String) {
         } else {
             LazyColumn(Modifier.padding(horizontal = 12.dp)) {
                 items(sales, key = { it.id }) { s ->
-                    SaleRow(s, cashierNames[s.userId] ?: "—") { openSale = s }
+                    SaleRow(s, cashierNames[s.userId] ?: "—",
+                        onOpen = { openSale = s },
+                        onReprint = {
+                            reprintScope.launch {
+                                com.derycode.deryaccount.util.Reprint
+                                    .printPdf(context, db, branchId, s.id)
+                            }
+                        })
                     Spacer(Modifier.height(8.dp))
                 }
             }
@@ -101,14 +111,14 @@ private fun SummaryStat(value: String, label: String) {
 }
 
 @Composable
-private fun SaleRow(sale: Sale, cashier: String, onClick: () -> Unit) {
-    Surface(color = DaSurface, shape = RoundedCornerShape(12.dp), onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+private fun SaleRow(sale: Sale, cashier: String, onOpen: () -> Unit, onReprint: () -> Unit) {
+    Surface(color = DaSurface, shape = RoundedCornerShape(12.dp), onClick = onOpen, modifier = Modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().padding(12.dp),
+            Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(sale.receiptNo, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = DaTextPrimary)
                 Text("${shortTime(sale.soldAt)} · By $cashier", fontSize = 11.sp, color = DaTextMuted)
             }
@@ -116,12 +126,18 @@ private fun SaleRow(sale: Sale, cashier: String, onClick: () -> Unit) {
                 Text("UGX " + fmtN(sale.total), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = DaGreen)
                 Text(methodLabel(sale.paymentMethod), fontSize = 11.sp, color = DaTextMuted)
             }
+            // Reprint: regenerates the receipt PDF and opens the print dialog
+            IconButton(onClick = onReprint) {
+                Icon(Icons.Default.Print, "Reprint receipt", tint = DaTextMuted, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }
 
 @Composable
-private fun SaleDetailsScreen(db: AppDatabase, sale: Sale, cashier: String, onBack: () -> Unit) {
+private fun SaleDetailsScreen(db: AppDatabase, branchId: String, sale: Sale, cashier: String, onBack: () -> Unit) {
+    val detailsCtx = androidx.compose.ui.platform.LocalContext.current
+    val detailsScope = androidx.compose.runtime.rememberCoroutineScope()
     var items by remember { mutableStateOf(emptyList<SaleItem>()) }
     LaunchedEffect(sale.id) {
         items = try { db.saleItemDao().forSale(sale.id) } catch (_: Exception) { emptyList() }
@@ -134,7 +150,11 @@ private fun SaleDetailsScreen(db: AppDatabase, sale: Sale, cashier: String, onBa
                     Text(sale.receiptNo, fontWeight = FontWeight.Bold, color = DaTextPrimary)
                     Text(fullDate(sale.soldAt), fontSize = 11.sp, color = DaTextMuted)
                 }
-                IconButton(onClick = {}) { Icon(Icons.Default.Print, null, tint = DaTextPrimary) }
+                IconButton(onClick = {
+                    detailsScope.launch {
+                        com.derycode.deryaccount.util.Reprint.printPdf(detailsCtx, db, branchId, sale.id)
+                    }
+                }) { Icon(Icons.Default.Print, "Reprint receipt", tint = DaTextPrimary) }
             }
         }
         Surface(color = DaSurface2, modifier = Modifier.fillMaxWidth().padding(12.dp), shape = RoundedCornerShape(10.dp)) {

@@ -9,6 +9,14 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE isDeleted = 0 AND branchId = :branchId ORDER BY name")
     fun observeBranchProducts(branchId: String): Flow<List<Product>>
 
+    /** POS tiles: favourites first, then alphabetical. */
+    @Query("SELECT * FROM products WHERE isDeleted = 0 AND branchId = :branchId ORDER BY isFavourite DESC, name COLLATE NOCASE ASC")
+    fun catalogueForBranch(branchId: String): Flow<List<Product>>
+
+    /** Star / unstar a fast seller. */
+    @Query("UPDATE products SET isFavourite = :fav WHERE id = :id")
+    suspend fun setFavourite(id: String, fav: Boolean)
+
     @Query("SELECT * FROM products WHERE isDeleted = 0 AND (barcode = :barcode) AND (branchId = :branchId) LIMIT 1")
     suspend fun findByBarcode(barcode: String, branchId: String): Product?
 
@@ -397,3 +405,20 @@ data class AccountBalanceView(
     val type: String,
     val netBalance: Double
 )
+
+
+/** Parked carts (Hold Sale). Local only — never synced, never in the books. */
+@Dao
+interface HeldSaleDao {
+    @Query("SELECT * FROM held_sales WHERE branchId = :branchId ORDER BY createdAt DESC")
+    fun forBranch(branchId: String): Flow<List<HeldSale>>
+
+    @Query("SELECT * FROM held_sales WHERE id = :id")
+    suspend fun byId(id: String): HeldSale?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(held: HeldSale)
+
+    @Query("DELETE FROM held_sales WHERE id = :id")
+    suspend fun delete(id: String)
+}

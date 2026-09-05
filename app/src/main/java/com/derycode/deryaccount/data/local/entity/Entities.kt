@@ -66,6 +66,7 @@ data class Product(
     val branchId: String,
     override val createdAt: String,
     override val updatedAt: String,
+    val isFavourite: Boolean = false,     // starred fast-sellers float to top of POS
     override val syncState: String = "pending",
     override val isDeleted: Boolean = false
 ) : Syncable
@@ -234,3 +235,20 @@ data class StockTransfer(
     override val syncState: String = "pending",
     override val isDeleted: Boolean = false
 ) : Syncable
+
+/**
+ * HeldSale — a parked cart ("hold this while the customer fetches money").
+ * Lines are stored as JSON (productId, qty, unitPrice) so no second
+ * line-items table is needed. 100% local — a held sale is work-in-progress,
+ * not a business event, so it never enters the books and never syncs.
+ */
+@Entity(tableName = "held_sales")
+data class HeldSale(
+    @PrimaryKey val id: String,              // UUID
+    val branchId: String,
+    val userId: String,
+    val discount: Double,                     // discount typed before holding
+    val linesJson: String,                    // JSON array of [productId, qty, unitPrice]
+    val note: String,                         // e.g. "blue jerrycan guy"
+    val createdAt: String                    // ISO string, same style as Sale
+)

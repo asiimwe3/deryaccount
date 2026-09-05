@@ -30,11 +30,16 @@ object DbSafety {
                 "yyyy-MM-dd_HHmmss", java.util.Locale.US).format(java.util.Date())
             File(dir, "error_${stamp}.txt").writeText(
                 "DeryAccount save error in $where\n" +
-                "Free space: ${Runtime.getRuntime().maxMemory()}\n" +
+                "Free disk: ${freeMb(context)} MB\n" +
                 "StatFs usable: ${usableMb(context)} MB\n\n" +
                 android.util.Log.getStackTraceString(e))
         } catch (_: Exception) { }
     }
+
+    /** Real free disk space (MB) where the database lives. */
+    private fun freeMb(context: Context): Long = try {
+        android.os.StatFs(context.filesDir.absolutePath).availableBytes / 1_048_576
+    } catch (_: Exception) { -1 }
 
     private fun usableMb(context: Context): Long = try {
         StatFs(context.filesDir.absolutePath).availableBytes / (1024 * 1024)

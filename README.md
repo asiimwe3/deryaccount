@@ -111,3 +111,14 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   (previously both buttons opened in Received mode)
 - Ledger running balance now starts from the true opening balance
 - Home card relabeled "Cash & Bank" (it sums Cash + Petty + Bank/MoMo)
+
+## v0.7.0 — Hold Sale, Favourites, Discount, Reprint
+- Hold Sale: park a customer's cart with a note, serve the next one, resume
+  later from the pause badge (auto-holds an open cart first, never destroys)
+- Favourites: star fast sellers on the POS tiles — they float to the top
+- Discount: type it right on the Sell screen (clamped, never negative total)
+- Reprint: regenerate any past receipt as PDF via the same engine as checkout
+  — print icon on every sale row and in sale details
+- New held_sales table + products.isFavourite column via MIGRATION_2_3
+  (a real Room migration — shop data survives the update)
+- DbSafety crash log now records REAL free disk space (was logging Java heap)
