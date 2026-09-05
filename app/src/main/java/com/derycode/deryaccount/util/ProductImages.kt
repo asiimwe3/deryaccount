@@ -26,13 +26,17 @@ object ProductImages {
     private val cache = object : LruCache<String, ImageBitmap>(24) {}
 
     /** Copy the picked gallery/camera image into app storage. Returns the stored path. */
-    fun save(context: Context, source: Uri): String? = try {
-        val bitmap = decodeScaled(context, source) ?: return null
-        val dir = File(context.filesDir, DIR).apply { mkdirs() }
-        val file = File(dir, "${UUID.randomUUID()}.jpg")
-        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 82, it) }
-        file.absolutePath
-    } catch (_: Exception) { null }
+    fun save(context: Context, source: Uri): String? {
+        val bitmap = try {
+            decodeScaled(context, source)
+        } catch (_: Exception) { null } ?: return null
+        return try {
+            val dir = File(context.filesDir, DIR).apply { mkdirs() }
+            val file = File(dir, "${UUID.randomUUID()}.jpg")
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 82, it) }
+            file.absolutePath
+        } catch (_: Exception) { null }
+    }
 
     /** Delete a stored photo (when a product is removed or its photo changed). */
     fun delete(path: String?) {
