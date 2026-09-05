@@ -189,3 +189,11 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   and could not be seen or filled. Rebuilt with flexible widths so all fields
   always fit, plus a compact +/- stepper: one tap adds stock, no typing needed.
 - Tapping + also ticks the item automatically.
+
+## v0.8.4 — fixed Sales screen crash (Compose animation binary mismatch)
+- Crash log showed NoSuchMethodError: KeyframesSpecConfig.at(Object,int) in
+  animation-core 1.6.0 when SalesScreen composed its CircularProgressIndicator.
+  material3 1.1.2 bytecode calls at() expecting it to return KeyframeEntity;
+  1.6.0 moved the method to the base class with a different erased signature.
+- Fix: pinned androidx.compose.animation + animation-core to 1.6.7, which
+  restores the exact override (verified via javap against both AARs).

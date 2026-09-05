@@ -12,8 +12,8 @@ android {
         applicationId "com.derycode.deryaccount"
         minSdk 24          // covers most entry-level tablets in Uganda
         targetSdk 34
-        versionCode 20
-        versionName "0.8.3"
+        versionCode 21
+        versionName "0.8.4"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -44,6 +44,13 @@ dependencies {
     implementation 'androidx.compose.ui:ui-tooling-preview'
     implementation 'androidx.compose.material3:material3'
     implementation 'androidx.compose.material:material-icons-extended'
+    // Binary-compat fix: material3 1.1.2 calls KeyframesSpecConfig.at(T,int)
+    // (erased: returns KeyframeEntity). animation-core 1.6.0 moved that method
+    // to the base class with a different erased return type -> NoSuchMethodError
+    // on SalesScreen's CircularProgressIndicator. 1.6.7 restores the exact
+    // override (with bridge). Pin the whole animation artifact family to 1.6.7.
+    implementation 'androidx.compose.animation:animation:1.6.7'
+    implementation 'androidx.compose.animation:animation-core:1.6.7'
     implementation 'androidx.activity:activity-compose:1.8.2'
     implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.7.0'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0'
