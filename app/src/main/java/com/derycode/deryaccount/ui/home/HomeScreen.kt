@@ -9,6 +9,7 @@ package com.derycode.deryaccount.ui.home
  */
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -52,6 +53,7 @@ fun HomeScreen(
 ) {
     val accounting = remember { AccountingRepo(db) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val licenseState = remember { com.derycode.deryaccount.billing.LicenseManager.state(context) }
     var stats by remember { mutableStateOf(HomeStats()) }
     var loading by remember { mutableStateOf(true) }
     var reorderList by remember { mutableStateOf(emptyList<com.derycode.deryaccount.data.local.entity.Product>()) }
@@ -107,7 +109,32 @@ fun HomeScreen(
                 fontWeight = FontWeight.ExtraBold, color = DaTextPrimary)
             Text("Here's your business at a glance", fontSize = 13.sp, color = DaTextMuted)
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
+
+        // ---- subscription trial banner (soft — never blocks the books) ----
+        if (licenseState.isTrial && licenseState.trialDaysLeft <= 5) {
+            Card(Modifier.fillMaxWidth().clickable { onNavigate("subscription") },
+                colors = CardDefaults.cardColors(containerColor = DaAmber.copy(alpha = 0.14f))) {
+                Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Star, null, tint = DaAmber, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Free trial ends in ${licenseState.trialDaysLeft} day(s) — tap to see plans",
+                        fontSize = 12.sp, color = DaTextPrimary, modifier = Modifier.weight(1f))
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+        } else if (!licenseState.isTrial && !licenseState.isLicensed) {
+            Card(Modifier.fillMaxWidth().clickable { onNavigate("subscription") },
+                colors = CardDefaults.cardColors(containerColor = DaBlue.copy(alpha = 0.14f))) {
+                Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.WorkspacePremium, null, tint = DaBlue, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Running on Starter — tap to unlock Business/Professional features",
+                        fontSize = 12.sp, color = DaTextPrimary, modifier = Modifier.weight(1f))
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+        }
 
         // ---- stat cards ----
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

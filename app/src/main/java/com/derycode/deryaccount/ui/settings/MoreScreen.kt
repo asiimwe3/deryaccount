@@ -2,6 +2,7 @@ package com.derycode.deryaccount.ui.settings
 
 import android.content.Context
 import java.io.File
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,6 +36,7 @@ fun MoreScreen(
     var syncMsg by remember { mutableStateOf<String?>(null) }
     var sbUrl by remember { mutableStateOf("") }
     var sbKey by remember { mutableStateOf("") }
+    val licenseState = remember { com.derycode.deryaccount.billing.LicenseManager.state(context) }
     var backupMsg by remember { mutableStateOf<String?>(null) }
     var restoreMsg by remember { mutableStateOf<String?>(null) }
     var restoreConfirm by remember { mutableStateOf(false) }
@@ -152,6 +154,28 @@ fun MoreScreen(
                 OutlinedButton(onClick = { context.shareErrorLogs() }) {
                     Text("Send error logs (WhatsApp)")
                 }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // ---- Subscription & Pricing ----
+        Card(Modifier.fillMaxWidth().clickable { onNavigate("subscription") }) {
+            Row(Modifier.padding(16.dp).fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Icon(androidx.compose.material.icons.Icons.Default.WorkspacePremium, null,
+                    tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Subscription & Pricing", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (licenseState.isLicensed) "Plan: ${licenseState.plan.displayName} — licensed"
+                        else if (licenseState.isTrial) "Free trial — ${licenseState.trialDaysLeft} day(s) left"
+                        else "Trial ended — running on Starter. Tap to see plans",
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(androidx.compose.material.icons.Icons.Default.ChevronRight, null)
             }
         }
 

@@ -52,6 +52,7 @@ class MainActivity : ComponentActivity() {
         // Crash safety net: every unexpected crash is logged to the
         // DeryAccount/crashes folder on the device — never silently lost.
         com.derycode.deryaccount.util.AutoUpdate.installCrashLogger(this)
+        com.derycode.deryaccount.billing.LicenseManager.ensureTrialStarted(this)
         enableEdgeToEdge()
         setContent { DeryAccountTheme { DeryAccountApp() } }
     }
@@ -313,6 +314,10 @@ fun DeryAccountApp() {
                     scope.launch { session.logout() }
                 }
             }
+            composable("subscription") {
+                com.derycode.deryaccount.ui.subscription.SubscriptionScreen(
+                    onBack = { navController.popBackStack() })
+            }
         }
     }
     } // drawer
@@ -328,6 +333,7 @@ private fun appTitle(route: String?): String = when (route) {
     "reports" -> "Reports"
     "expenses" -> "Expenses"
     "customers" -> "Customers"
+    "subscription" -> "Subscription & Pricing"
     "shift" -> "Shift"
     "more" -> "More"
     else -> "DeryAccount"
