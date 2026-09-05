@@ -582,7 +582,7 @@ private fun TransferDialog(db: AppDatabase, fromBranchId: String, product: Produ
                 }
                 val matchBranchName = branches.firstOrNull { it.id == match?.branchId }?.name
                 if (match != null && matchBranchName != null) {
-                    Text("Matches "$matchBranchName" — stock will land there.",
+                    Text("Matches \"$matchBranchName\" — stock will land there.",
                         fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 OutlinedTextField(qty, { qty = it; err = null },
