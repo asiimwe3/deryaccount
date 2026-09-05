@@ -1,11 +1,16 @@
 package com.derycode.deryaccount.ui.pos
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.items as lazyListItems
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -26,6 +31,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.derycode.deryaccount.data.local.entity.Product
+import com.derycode.deryaccount.ui.theme.*
 import com.derycode.deryaccount.util.PdfExport
 import kotlinx.coroutines.launch
 import java.io.File
@@ -41,7 +47,9 @@ import java.io.File
 @Composable
 fun PosScreen(
     viewModel: PosViewModel,
-    onSaleComplete: (receiptNo: String) -> Unit
+    onSaleComplete: (receiptNo: String) -> Unit,
+    branchName: String = "Main Branch",
+    cashierName: String = "Cashier"
 ) {
     val ui by viewModel.uiState.collectAsState()
     val catalog by viewModel.catalog.collectAsState(initial = emptyList())
@@ -54,7 +62,17 @@ fun PosScreen(
     var showScanner by remember { mutableStateOf(false) }
     var showHoldDialog by remember { mutableStateOf(false) }
     var showHeldSheet by remember { mutableStateOf(false) }
+    var showCustomerPicker by remember { mutableStateOf(false) }
     var discountInput by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("All") }
+    var gridMode by remember { mutableStateOf(true) }
+    var categoryMenuOpen by remember { mutableStateOf(false) }
+    var visibleCount by remember { mutableStateOf(6) }
+
+    // Lightweight, best-effort connectivity display — the app itself never depends on it
+    var online by remember { mutableStateOf(false) }
+    var syncTick by remember { mutableStateOf(0) }
+    LaunchedEffect(syncTick) { online = viewModel.isOnline() }
 
     // Auto-open the print dialog after EVERY sale (receipt saved as PDF too)
     ui.lastReceipt?.pdfPath?.let { path ->
@@ -64,6 +82,27 @@ fun PosScreen(
     }
 
     Column(Modifier.fillMaxSize().padding(8.dp)) {
+
+        // ---- Status row: branch, cashier, connectivity pill, manual sync ----
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("$branchName  •  Cashier: $cashierName", fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Surface(
+                color = if (online) DaGreen.copy(alpha = 0.15f) else DaRed.copy(alpha = 0.15f),
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(if (online) "Online" else "Offline", fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                    color = if (online) DaGreen else DaRed,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+            }
+            Spacer(Modifier.width(6.dp))
+            TextButton(onClick = { syncTick++ }, contentPadding = PaddingValues(horizontal = 6.dp)) {
+                Icon(Icons.Default.Sync, null, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(2.dp))
+                Text("Sync", fontSize = 12.sp)
+            }
+        }
+        Spacer(Modifier.height(4.dp))
 
         // ---- Hero banner: free for the first 100 ----
         if (showBanner) {
@@ -142,6 +181,19 @@ fun PosScreen(
                 tonalElevation = 2.dp, shape = MaterialTheme.shapes.medium
             ) {
                 Column(Modifier.padding(6.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Text("Cart (${ui.cart.size} items)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        TextButton(onClick = { viewModel.clearCart(); discountInput = "" }) {
+                            Icon(Icons.Default.DeleteOutline, null, modifier = Modifier.size(16.dp), tint = DaRed)
+                            Spacer(Modifier.width(2.dp))
+                            Text("Clear Cart", color = DaRed, fontSize = 12.sp)
+                        }
+                    }
+                    if (ui.customerName != null) {
+                        Text("Customer: ${ui.customerName}", fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     ui.cart.take(6).forEach { line ->
                         Row(
                             Modifier.fillMaxWidth().padding(vertical = 2.dp),
@@ -169,80 +221,213 @@ fun PosScreen(
             Spacer(Modifier.height(6.dp))
         }
 
-        // ---- Product tiles: tap = sell. Ordered alphabetically, big buttons. ----
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(110.dp),
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        // ---- Category filter chips (derived from the real catalog) ----
+        val allCategories = remember(catalog) { catalog.map { it.category }.distinct().sorted() }
+        val shownChips = allCategories.take(4)
+        val restChips = allCategories.drop(4)
+        androidx.compose.foundation.lazy.LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            val showList = if (ui.searchResults.isNotEmpty()) ui.searchResults else catalog
-            items(showList, key = { it.id }) { p ->
-                ProductTile(p,
-                    onTap = {
-                        viewModel.addProduct(p)
-                        scanInput = ""
-                    },
-                    onToggleFav = { viewModel.toggleFavourite(p.id, !p.isFavourite) })
+            item {
+                FilterChip(selected = selectedCategory == "All", onClick = { selectedCategory = "All" },
+                    label = { Text("All") })
+            }
+            lazyListItems(shownChips) { cat ->
+                FilterChip(selected = selectedCategory == cat, onClick = { selectedCategory = cat },
+                    label = { Text(cat) })
+            }
+            if (restChips.isNotEmpty()) item {
+                Box {
+                    FilterChip(selected = restChips.contains(selectedCategory), onClick = { categoryMenuOpen = true },
+                        label = { Text("More") }, trailingIcon = { Icon(Icons.Default.ArrowDropDown, null, Modifier.size(16.dp)) })
+                    DropdownMenu(expanded = categoryMenuOpen, onDismissRequest = { categoryMenuOpen = false }) {
+                        restChips.forEach { cat ->
+                            DropdownMenuItem(text = { Text(cat) }, onClick = {
+                                selectedCategory = cat; categoryMenuOpen = false
+                            })
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+
+        // ---- Product count + Grid/List toggle ----
+        val filtered = remember(catalog, selectedCategory, ui.searchResults) {
+            val base = if (ui.searchResults.isNotEmpty()) ui.searchResults
+                       else if (selectedCategory == "All") catalog
+                       else catalog.filter { it.category == selectedCategory }
+            base
+        }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Products (${filtered.size})", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f))
+            IconButton(onClick = { gridMode = true }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.GridView, "Grid",
+                    tint = if (gridMode) DaGreen else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton(onClick = { gridMode = false }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.List, "List",
+                    tint = if (!gridMode) DaGreen else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+
+        // ---- Product tiles: tap the star to favourite, use the stepper + cart button to sell ----
+        val showList = filtered.take(visibleCount)
+        if (gridMode) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(showList, key = { it.id }) { p ->
+                    ProductCard(p,
+                        onAdd = { qty -> viewModel.addProductQty(p, qty); scanInput = "" },
+                        onToggleFav = { viewModel.toggleFavourite(p.id, !p.isFavourite) })
+                }
+                if (filtered.size > visibleCount) item(span = { GridItemSpan(2) }) {
+                    TextButton(onClick = { visibleCount += 6 }, modifier = Modifier.fillMaxWidth()) {
+                        Text("View more products (${filtered.size - visibleCount} more)")
+                    }
+                }
+            }
+        } else {
+            androidx.compose.foundation.lazy.LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                lazyListItems(showList, key = { it.id }) { p ->
+                    ProductTile(p,
+                        onTap = { viewModel.addProduct(p); scanInput = "" },
+                        onToggleFav = { viewModel.toggleFavourite(p.id, !p.isFavourite) })
+                }
+                if (filtered.size > visibleCount) item {
+                    TextButton(onClick = { visibleCount += 6 }, modifier = Modifier.fillMaxWidth()) {
+                        Text("View more products (${filtered.size - visibleCount} more)")
+                    }
+                }
             }
         }
 
-        // ---- Total + big CASH button ----
+        // ---- Checkout card: Subtotal/Discount/Tax/TOTAL, then payment + quick actions ----
         Surface(Modifier.fillMaxWidth(), tonalElevation = 4.dp,
             shape = MaterialTheme.shapes.medium) {
             Column(Modifier.padding(10.dp)) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("TOTAL", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-                    Text(fmtMoney(ui.total), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.primary)
+                    Text("Subtotal", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(fmtMoney(ui.subtotal), fontSize = 13.sp)
                 }
-                // Discount — typed by the cashier, subtracted from the total
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Discount", fontSize = 13.sp)
-                    Spacer(Modifier.width(8.dp))
+                    Text("Discount", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f))
                     OutlinedTextField(
                         value = discountInput,
                         onValueChange = { raw ->
                             discountInput = raw.filter { it.isDigit() }
                             discountInput.toDoubleOrNull()?.let { viewModel.setDiscount(it) }
                         },
-                        modifier = Modifier.width(130.dp).height(52.dp),
+                        modifier = Modifier.width(120.dp).height(48.dp),
                         placeholder = { Text("0") },
                         singleLine = true,
-                        prefix = { Text("UGX", fontSize = 11.sp) }
+                        prefix = { Text("UGX", fontSize = 11.sp) },
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp)
                     )
-                    Spacer(Modifier.weight(1f))
-                    if (ui.subtotal > 0 && ui.discount > 0) {
-                        Text("Subtotal ${fmtMoney(ui.subtotal)}", fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
                 }
-                Spacer(Modifier.height(6.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Tax (0%)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("UGX 0", fontSize = 13.sp)
+                }
+                Divider(Modifier.padding(vertical = 6.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("TOTAL", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(fmtMoney(ui.total), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = DaGreen)
+                }
+                Spacer(Modifier.height(8.dp))
+
+                // ---- Payment methods: three equal, big, colour-coded buttons ----
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = { if (ui.total > 0) viewModel.checkout("CASH", ui.total) },
-                        modifier = Modifier.weight(2f).height(58.dp)
+                        colors = ButtonDefaults.buttonColors(containerColor = DaGreen, contentColor = Color(0xFF03150A)),
+                        modifier = Modifier.weight(1f).height(58.dp)
                     ) {
-                        Icon(Icons.Default.Payments, null); Spacer(Modifier.width(6.dp))
-                        Text("CASH", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Payments, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp)); Text("CASH", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text("Pay with cash", fontSize = 9.sp)
+                        }
                     }
-                    OutlinedButton(
+                    Button(
                         onClick = { viewModel.pendingMethod = "MTN_MOMO" },
-                        modifier = Modifier.weight(1f).height(58.dp)
-                    ) { Text("MoMo", fontSize = 14.sp) }
-                    OutlinedButton(
-                        onClick = { if (ui.total > 0) showCreditPicker = true },
-                        modifier = Modifier.weight(1f).height(58.dp)
-                    ) { Text("Credit", fontSize = 14.sp) }
-                    // Hold: park this cart, serve the next customer
-                    OutlinedButton(
-                        onClick = { if (ui.cart.isNotEmpty()) showHoldDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = DaAmber, contentColor = Color(0xFF241800)),
                         modifier = Modifier.weight(1f).height(58.dp)
                     ) {
-                        Icon(Icons.Outlined.PauseCircle, null,
-                            modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(2.dp))
-                        Text("Hold", fontSize = 12.sp)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Smartphone, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp)); Text("MOBILE MONEY", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text("MTN / Airtel", fontSize = 9.sp)
+                        }
+                    }
+                    Button(
+                        onClick = { if (ui.total > 0) showCreditPicker = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = DaBlue, contentColor = Color.White),
+                        modifier = Modifier.weight(1f).height(58.dp)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.CreditCard, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp)); Text("CREDIT", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text("Card / Credit sale", fontSize = 9.sp)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+
+                // ---- Quick actions: Hold Sale, Customer, Receipt ----
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        onClick = { if (ui.cart.isNotEmpty()) showHoldDialog = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Outlined.PauseCircle, null, modifier = Modifier.size(18.dp))
+                            Text("Hold Sale", fontSize = 11.sp)
+                            Text("Save for later", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    TextButton(
+                        onClick = { showCustomerPicker = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp))
+                            Text("Customer", fontSize = 11.sp)
+                            Text(ui.customerName ?: "Select customer", fontSize = 9.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            if (ui.lastReceipt != null) viewModel.printReceipt()
+                            else scope.launch {
+                                android.widget.Toast.makeText(context, "Complete a sale first", android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Receipt, null, modifier = Modifier.size(18.dp))
+                            Text("Receipt", fontSize = 11.sp)
+                            Text("Print / Preview", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
@@ -275,6 +460,14 @@ fun PosScreen(
 
     // ---- Parked carts ----
     if (showHeldSheet) HeldSalesSheet(viewModel, onDismiss = { showHeldSheet = false })
+
+    // ---- Attach a customer to this sale (any payment method, not just credit) ----
+    if (showCustomerPicker) CustomerPickerDialog(
+        viewModel = viewModel,
+        onPicked = { id, name -> viewModel.setCustomer(id, name); showCustomerPicker = false },
+        onClear = { viewModel.setCustomer(null, null); showCustomerPicker = false },
+        onDismiss = { showCustomerPicker = false }
+    )
 
     // ---- Unknown barcode → instant product creation ----
     ui.unknownBarcode?.let { code ->
@@ -707,4 +900,103 @@ private fun HeldSalesSheet(viewModel: PosViewModel, onDismiss: () -> Unit) {
             Spacer(Modifier.height(20.dp))
         }
     }
+}
+
+/**
+ * Product card for the 2-column Sell grid — image placeholder, favourite star,
+ * name, live stock count, price, a qty stepper, and a dedicated add-to-cart
+ * button (adds exactly the stepped quantity in one tap).
+ */
+@Composable
+private fun ProductCard(p: Product, onAdd: (Double) -> Unit, onToggleFav: () -> Unit) {
+    var qty by remember(p.id) { mutableStateOf(1) }
+    Surface(
+        color = DaSurface, shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(10.dp)) {
+            Box(Modifier.fillMaxWidth()) {
+                Box(
+                    Modifier.fillMaxWidth().height(56.dp)
+                        .background(DaSurface2, MaterialTheme.shapes.small),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Inventory2, null, tint = DaTextMuted, modifier = Modifier.size(28.dp))
+                }
+                IconButton(onClick = onToggleFav, modifier = Modifier.align(Alignment.TopEnd).size(26.dp)) {
+                    Icon(
+                        if (p.isFavourite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (p.isFavourite) "Remove favourite" else "Favourite",
+                        tint = if (p.isFavourite) DaAmber else DaTextMuted,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(p.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                color = DaTextPrimary)
+            val left = if (p.stockQty % 1.0 == 0.0) p.stockQty.toLong().toString() else p.stockQty.toString()
+            Text(
+                if (p.stockQty <= 0) "OUT OF STOCK" else "In stock: $left",
+                fontSize = 11.sp,
+                color = if (p.stockQty <= p.lowStockAlert) DaRed else DaTextMuted
+            )
+            Text(fmtMoney(p.retailPrice), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DaGreen)
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                FilledTonalIconButton(onClick = { if (qty > 1) qty-- }, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Remove, null, modifier = Modifier.size(14.dp))
+                }
+                Text(" $qty ", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                FilledTonalIconButton(onClick = { qty++ }, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.Add, null, modifier = Modifier.size(14.dp))
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(
+                    onClick = { onAdd(qty.toDouble()) },
+                    enabled = p.stockQty > 0,
+                    modifier = Modifier.size(32.dp).background(DaGreen, MaterialTheme.shapes.small)
+                ) {
+                    Icon(Icons.Default.AddShoppingCart, "Add to cart", tint = Color(0xFF03150A), modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+    }
+}
+
+/** Attach a customer to the current sale — works for cash/MoMo too, not just credit. */
+@Composable
+private fun CustomerPickerDialog(
+    viewModel: PosViewModel,
+    onPicked: (String, String) -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val customers by viewModel.customers.collectAsState(initial = emptyList())
+    var search by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select customer", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(search, { search = it },
+                    label = { Text("Find customer") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(6.dp))
+                val shown = customers.filter {
+                    search.isBlank() || it.name.contains(search, ignoreCase = true)
+                            || (it.phone?.contains(search) == true)
+                }
+                if (shown.isEmpty()) Text("No customers yet — add one from Customers.", fontSize = 12.sp)
+                shown.take(10).forEach { cust ->
+                    ListItem(
+                        headlineContent = { Text(cust.name) },
+                        supportingContent = { cust.phone?.let { Text(it) } },
+                        modifier = Modifier.fillMaxWidth().clickable(onClick = { onPicked(cust.id, cust.name) })
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClear) { Text("Walk-in (no customer)") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }

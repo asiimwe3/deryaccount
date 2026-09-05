@@ -122,3 +122,16 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
 - New held_sales table + products.isFavourite column via MIGRATION_2_3
   (a real Room migration — shop data survives the update)
 - DbSafety crash log now records REAL free disk space (was logging Java heap)
+
+## v0.7.1 — Sell screen redesign (matches latest mockup)
+- Status row: branch, cashier name, live Online/Offline pill, manual Sync
+- Category filter chips derived from the real catalog (All + top 4 + More menu)
+- Products (N) count with Grid/List view toggle; "View more products" paging
+- New 2-column product cards: stock count, price, qty stepper, dedicated
+  add-to-cart button, favourite star — List view keeps the compact row style
+- Cart card: "Cart (N items)" header + Clear Cart, attached-customer line
+- Checkout breakdown: Subtotal / Discount (editable) / Tax / TOTAL
+- Three equal, colour-coded payment buttons: CASH (green) / MOBILE MONEY
+  (amber) / CREDIT (blue), each with a one-line subtitle
+- Hold Sale / Customer / Receipt quick-action row under checkout
+- New: attach a customer to ANY sale (not just credit) via the Customer button

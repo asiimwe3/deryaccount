@@ -274,7 +274,8 @@ fun DeryAccountApp() {
                 val vm: PosViewModel = viewModel(
                     factory = PosViewModel.Factory(db, branchId, userId, context)
                 )
-                PosScreen(viewModel = vm, onSaleComplete = { })
+                PosScreen(viewModel = vm, onSaleComplete = { },
+                    branchName = branchName, cashierName = ownerName.ifBlank { "Cashier" })
             }
             composable("inventory") {
                 InventoryScreen(db, branchId)

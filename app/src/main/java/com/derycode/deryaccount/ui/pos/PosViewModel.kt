@@ -43,7 +43,9 @@ class PosViewModel(
         val showPaymentDialog: Boolean = false,
         val lastReceipt: ReceiptUi? = null,
         val error: String? = null,
-        val heldSales: List<com.derycode.deryaccount.data.local.entity.HeldSale> = emptyList()
+        val heldSales: List<com.derycode.deryaccount.data.local.entity.HeldSale> = emptyList(),
+        val customerId: String? = null,     // optional customer attached before checkout (any payment method)
+        val customerName: String? = null
     )
 
     private val _uiState = MutableStateFlow(UiState())
@@ -95,6 +97,11 @@ class PosViewModel(
     }
 
     private val repo = PosRepository(appContext, db)
+
+    /** Best-effort connectivity check for the status pill — the app never depends on this. */
+    fun isOnline(): Boolean = try {
+        com.derycode.deryaccount.sync.SyncEngine(appContext, db).isOnline()
+    } catch (_: Exception) { false }
 
     // ---- interactions ----
 
@@ -154,6 +161,25 @@ class PosViewModel(
         }
     }
 
+    /** Add a specific quantity in one tap — used by the card's stepper + cart button. */
+    fun addProductQty(p: com.derycode.deryaccount.data.local.entity.Product, qty: Double) {
+        if (qty <= 0) return
+        _uiState.update { st ->
+            val existing = st.cart.find { it.product.id == p.id }
+            val newQty = (existing?.qty ?: 0.0) + qty
+            val price = repo.priceFor(p, newQty, st.saleType)
+            val cart = if (existing != null)
+                st.cart.map { if (it.product.id == p.id) it.copy(qty = newQty, unitPrice = price) else it }
+            else st.cart + CartLineUi(p, newQty, price)
+            recompute(st.copy(cart = cart))
+        }
+    }
+
+    /** Attach a customer to the cart before checkout — works for cash/MoMo too, not just credit. */
+    fun setCustomer(id: String?, name: String?) {
+        _uiState.update { it.copy(customerId = id, customerName = name) }
+    }
+
     fun setQty(productId: String, qty: Double) {
         _uiState.update { st ->
             if (qty <= 0) st.copy(cart = st.cart.filter { it.product.id != productId }).let(::recompute)
@@ -170,6 +196,11 @@ class PosViewModel(
 
     fun removeLine(productId: String) {
         _uiState.update { recompute(it.copy(cart = it.cart.filter { l -> l.product.id != productId })) }
+    }
+
+    /** Empty the cart and drop any attached customer/discount — a fresh start. */
+    fun clearCart() {
+        _uiState.update { recompute(it.copy(cart = emptyList(), discount = 0.0, customerId = null, customerName = null)) }
     }
 
     fun toggleSaleType() {
@@ -256,12 +287,13 @@ class PosViewModel(
     fun checkout(method: String, amountPaid: Double, customerId: String? = null) {
         val st = _uiState.value
         if (st.cart.isEmpty()) { _uiState.update { it.copy(error = "Cart is empty") }; return }
+        val effectiveCustomerId = customerId ?: st.customerId
         viewModelScope.launch {
             try {
                 val lines = st.cart.map { PosRepository.CartLine(it.product, it.qty, it.unitPrice) }
                 val result = repo.checkout(
                     branchId = branchId, userId = userId, lines = lines,
-                    customerId = customerId, saleType = st.saleType,
+                    customerId = effectiveCustomerId, saleType = st.saleType,
                     amountPaid = amountPaid, paymentMethod = method,
                     discount = st.discount
                 )
