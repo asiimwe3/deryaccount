@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
+import androidx.navigation.navArgument
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -292,10 +293,19 @@ fun DeryAccountApp() {
             composable("shift") {
                 ShiftScreen(db, branchId, userId)
             }
-            composable("books") {
+            composable(
+                "books?tab={tab}&book={book}",
+                arguments = listOf(
+                    navArgument("tab") { defaultValue = "0" },
+                    navArgument("book") { defaultValue = "" }
+                )
+            ) {
+                val tab = it.arguments?.getString("tab")?.toIntOrNull() ?: 0
+                val book = it.arguments?.getString("book")?.takeIf { b -> b.isNotBlank() }
                 val accounting = remember { AccountingRepo(db) }
-                BooksScreen(db, accounting)
+                BooksScreen(db, accounting, initialTab = tab, initialBook = book)
             }
+
             composable("more") {
                 MoreScreen(db, syncEngine, session, context,
                     onNavigate = { route -> navController.navigate(route) { launchSingleTop = true } }) {

@@ -43,8 +43,9 @@ import java.util.Locale
  * receipts in, payments out, running balance.
  */
 @Composable
-fun BooksScreen(db: AppDatabase, accounting: AccountingRepo) {
-    var tab by remember { mutableIntStateOf(0) }
+fun BooksScreen(db: AppDatabase, accounting: AccountingRepo, initialTab: Int = 0,
+                initialBook: String? = null) {
+    var tab by remember { mutableIntStateOf(initialTab.coerceIn(0, 4)) }
     val tabs = listOf("Cash Book", "Ledger", "Trial Balance", "Income Stmt", "Balance Sheet")
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -56,7 +57,7 @@ fun BooksScreen(db: AppDatabase, accounting: AccountingRepo) {
             }
         }
         when (tab) {
-            0 -> CashBookTab(db, accounting, context)
+            0 -> CashBookTab(db, accounting, context, initialBook)
             1 -> LedgerTab(db, accounting, context)
             2 -> TrialBalanceTab(accounting, context)
             3 -> IncomeStatementTab(accounting, context)
@@ -71,12 +72,13 @@ private data class BookRow(val date: String, val voucher: String, val particular
 // CASH BOOK
 // ----------------------------------------------------------------
 @Composable
-private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo, context: android.content.Context) {
+private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo,
+                        context: android.content.Context, initialBook: String? = null) {
     val scope = rememberCoroutineScope()
     var rows by remember { mutableStateOf(emptyList<BookRow>()) }
     var opening by remember { mutableStateOf(0.0) }
     var accounts by remember { mutableStateOf(emptyList<Account>()) }
-    var bookCode by remember { mutableStateOf("1000") }   // 1000 cash, 1001 petty, 1010 bank/momo
+    var bookCode by remember { mutableStateOf(initialBook ?: "1000") }   // 1000 cash, 1001 petty, 1010 bank/momo
     var showEntryDialog by remember { mutableStateOf(false) }
     var showPayment by remember { mutableStateOf(false) }
 

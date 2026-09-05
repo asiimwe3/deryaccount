@@ -74,6 +74,12 @@ fun PosScreen(
     var syncTick by remember { mutableStateOf(0) }
     LaunchedEffect(syncTick) { online = viewModel.isOnline() }
 
+    // Keep the discount box in sync when a held sale resumes with a discount
+    LaunchedEffect(ui.discount) {
+        if (ui.discount > 0 && discountInput.isBlank()) discountInput = ui.discount.toLong().toString()
+        if (ui.discount == 0.0) discountInput = ""
+    }
+
     // Auto-open the print dialog after EVERY sale (receipt saved as PDF too)
     ui.lastReceipt?.pdfPath?.let { path ->
         LaunchedEffect(path) {
@@ -96,7 +102,12 @@ fun PosScreen(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
             }
             Spacer(Modifier.width(6.dp))
-            TextButton(onClick = { syncTick++ }, contentPadding = PaddingValues(horizontal = 6.dp)) {
+            TextButton(onClick = {
+                viewModel.manualSync { msg ->
+                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                }
+                syncTick++
+            }, contentPadding = PaddingValues(horizontal = 6.dp)) {
                 Icon(Icons.Default.Sync, null, modifier = Modifier.size(15.dp))
                 Spacer(Modifier.width(2.dp))
                 Text("Sync", fontSize = 12.sp)

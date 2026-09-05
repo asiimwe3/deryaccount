@@ -132,13 +132,13 @@ fun HomeScreen(
 
 private data class BookTileData(val label: String, val icon: ImageVector, val route: String)
 private val bookTiles = listOf(
-    BookTileData("Cash Book", Icons.Default.MenuBook, "books"),
-    BookTileData("Petty Cash", Icons.Default.Savings, "books"),
-    BookTileData("Bank & MoMo", Icons.Default.AccountBalance, "books"),
-    BookTileData("Ledger", Icons.Default.ListAlt, "books"),
-    BookTileData("Income Stmt", Icons.Default.TrendingUp, "books"),
-    BookTileData("Trial Balance", Icons.Default.Balance, "books"),
-    BookTileData("Balance Sheet", Icons.Default.AccountTree, "books"),
+    BookTileData("Cash Book", Icons.Default.MenuBook, "books?tab=0&book=1000"),
+    BookTileData("Petty Cash", Icons.Default.Savings, "books?tab=0&book=1001"),
+    BookTileData("Bank & MoMo", Icons.Default.AccountBalance, "books?tab=0&book=1010"),
+    BookTileData("Ledger", Icons.Default.ListAlt, "books?tab=1"),
+    BookTileData("Trial Balance", Icons.Default.Balance, "books?tab=2"),
+    BookTileData("Income Stmt", Icons.Default.TrendingUp, "books?tab=3"),
+    BookTileData("Balance Sheet", Icons.Default.AccountTree, "books?tab=4"),
     BookTileData("Stock", Icons.Default.Inventory, "inventory"),
 )
 

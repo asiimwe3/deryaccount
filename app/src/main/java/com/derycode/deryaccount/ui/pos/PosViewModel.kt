@@ -103,6 +103,18 @@ class PosViewModel(
         com.derycode.deryaccount.sync.SyncEngine(appContext, db).isOnline()
     } catch (_: Exception) { false }
 
+    /** Manual Sync: one full push+pull cycle. Report what happened, never crash. */
+    fun manualSync(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val msg = try {
+                val r = com.derycode.deryaccount.sync.SyncEngine(appContext, db).syncAll()
+                if (!r.wasOnline) "Offline — saved locally, will sync when back online"
+                else "Synced ✓ ${r.pushed} up, ${r.pulled} down"
+            } catch (_: Exception) { "Sync failed — data saved locally" }
+            onResult(msg)
+        }
+    }
+
     // ---- interactions ----
 
     fun onScan(input: String) {

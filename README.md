@@ -135,3 +135,13 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   (amber) / CREDIT (blue), each with a one-line subtitle
 - Hold Sale / Customer / Receipt quick-action row under checkout
 - New: attach a customer to ANY sale (not just credit) via the Customer button
+
+## v0.7.2 — full screen-by-screen audit fixes
+- Home → Books tiles now open the RIGHT book: Cash Book, Petty Cash, Bank & MoMo,
+  Ledger, Trial Balance, Income Statement and Balance Sheet each land on their
+  own tab/book directly (previously every tile opened the Cash Book)
+- Sell screen Sync button now performs a real one-cycle push+pull sync and
+  reports the result ("Synced ✓ N up, N down" / offline message) — previously
+  it only re-checked connectivity
+- Discount box now auto-fills correctly when a held sale with a discount is
+  resumed, and clears with the cart
