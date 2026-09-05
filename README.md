@@ -169,3 +169,8 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   correctly); existing installs receive new accounts automatically
 - Built-in book self-check runs on Home: debits = credits, Stock account =
   stock list value, Debtors = customer balances; any mismatch is logged
+
+## v0.8.1 — one-tap error log sharing
+- New "Send error logs (WhatsApp)" button in More → Device Storage: packages
+  the 5 newest crash logs from DeryAccount/crashes into one text file and
+  opens WhatsApp share directly — no file manager needed

@@ -1,6 +1,7 @@
 package com.derycode.deryaccount.ui.settings
 
 import android.content.Context
+import java.io.File
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -99,6 +100,10 @@ fun MoreScreen(
                     Spacer(Modifier.height(6.dp))
                     Text(it, fontSize = 13.sp)
                 }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = { context.shareErrorLogs() }) {
+                    Text("Send error logs (WhatsApp)")
+                }
             }
         }
 
@@ -166,5 +171,53 @@ fun MoreScreen(
             },
             modifier = Modifier.fillMaxWidth()
         ) { Text("Log out", color = MaterialTheme.colorScheme.error) }
+    }
+}
+
+/**
+ * Packages the newest crash logs from DeryAccount/crashes into a single
+ * text file and opens WhatsApp with it attached — one tap, no file
+ * manager needed.
+ */
+private fun Context.shareErrorLogs() {
+    try {
+        val crashDir = File(DeviceStore.baseDir(this), "crashes")
+        val logs = crashDir.listFiles { f -> f.name.endsWith(".txt") }
+            ?.sortedByDescending { it.lastModified() }
+            ?.take(5)
+            .orEmpty()
+        if (logs.isEmpty()) {
+            android.widget.Toast.makeText(this,
+                "No error logs found — nothing to send", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        val text = logs.joinToString("\n\n================================\n\n") { file ->
+            "FILE: ${file.name}\n\n" + file.readText()
+        }
+        val outFile = File(DeviceStore.baseDir(this), "error_logs.txt")
+        outFile.writeText(text)
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            this, "$packageName.fileprovider", outFile)
+        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            setPackage("com.whatsapp")
+        }
+        try {
+            startActivity(send)
+        } catch (_: android.content.ActivityNotFoundException) {
+            // No WhatsApp — open the general share sheet instead
+            val generic = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(android.content.Intent.createChooser(generic, "Send error logs"))
+        }
+    } catch (e: Exception) {
+        try {
+            com.derycode.deryaccount.util.DbSafety.log(this, "Share error logs", e)
+        } catch (_: Exception) { }
     }
 }
