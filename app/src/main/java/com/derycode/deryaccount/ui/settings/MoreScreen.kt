@@ -163,7 +163,7 @@ fun MoreScreen(
         Card(Modifier.fillMaxWidth().clickable { onNavigate("subscription") }) {
             Row(Modifier.padding(16.dp).fillMaxWidth(),
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Icon(androidx.compose.material.icons.Icons.Default.WorkspacePremium, null,
+                Icon(androidx.compose.material.icons.Icons.Default.Verified, null,
                     tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
@@ -175,7 +175,7 @@ fun MoreScreen(
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Icon(androidx.compose.material.icons.Icons.Default.ChevronRight, null)
+                Icon(androidx.compose.material.icons.Icons.Default.KeyboardArrowRight, null)
             }
         }
 

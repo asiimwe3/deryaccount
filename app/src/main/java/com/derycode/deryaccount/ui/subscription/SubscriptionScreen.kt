@@ -74,7 +74,7 @@ fun SubscriptionScreen(onBack: () -> Unit = {}) {
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = DaSurface)) {
             Column(Modifier.padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.WorkspacePremium, null, tint = planColor(state.effectivePlan))
+                    Icon(Icons.Default.Verified, null, tint = planColor(state.effectivePlan))
                     Spacer(Modifier.width(8.dp))
                     Text("Current plan: ${state.effectivePlan.displayName}",
                         fontSize = 15.sp, fontWeight = FontWeight.Bold, color = DaTextPrimary)

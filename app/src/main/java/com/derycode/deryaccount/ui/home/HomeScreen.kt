@@ -127,7 +127,7 @@ fun HomeScreen(
             Card(Modifier.fillMaxWidth().clickable { onNavigate("subscription") },
                 colors = CardDefaults.cardColors(containerColor = DaBlue.copy(alpha = 0.14f))) {
                 Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.WorkspacePremium, null, tint = DaBlue, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Verified, null, tint = DaBlue, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Running on Starter — tap to unlock Business/Professional features",
                         fontSize = 12.sp, color = DaTextPrimary, modifier = Modifier.weight(1f))
