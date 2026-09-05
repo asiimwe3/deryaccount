@@ -7,6 +7,7 @@ import com.derycode.deryaccount.data.local.entity.JournalLine
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.flow.first
 import java.util.UUID
 
 /**
@@ -28,6 +29,7 @@ class AccountingRepo(private val db: AppDatabase) {
             Account("acc-capital","3000", "Capital",        "EQUITY", sortOrder = 7),
             Account("acc-drawings","3100","Drawings",       "EQUITY", sortOrder = 8),
             Account("acc-sales",  "4000", "Sales / Revenue","INCOME", sortOrder = 9),
+            Account("acc-reval",   "4900", "Stock Revaluation Gain", "INCOME", sortOrder = 9),
             Account("acc-cogs",   "5000", "Cost of Sales",  "EXPENSE", sortOrder = 10),
             Account("acc-purchases","5100","Purchases",     "EXPENSE", sortOrder = 11),
             Account("acc-rent",   "5200", "Rent",           "EXPENSE", sortOrder = 12),
@@ -44,15 +46,20 @@ class AccountingRepo(private val db: AppDatabase) {
         val SALES = "acc-sales"
         val STOCK = "acc-stock"
         val CREDITORS = "acc-creditors"
+        val REVAL = "acc-reval"
         val COGS = "acc-cogs"
         val SUNDAY_RUN = "acc-sundry"
     }
 
-    /** Seed the chart of accounts on first run. */
+    /**
+     * Seed the chart of accounts. Idempotent: any account missing from an
+     * existing install (e.g. new accounts added in later versions) is added,
+     * existing accounts are never overwritten.
+     */
     suspend fun ensureSeeded() {
-        if (db.accountDao().count() == 0) {
-            COA.forEach { db.accountDao().upsert(it) }
-        }
+        val existing = db.accountDao().all().map { it.code }.toSet()
+        val missing = COA.filter { it.code !in existing }
+        if (missing.isNotEmpty()) missing.forEach { db.accountDao().upsert(it) }
     }
 
     private fun now(): String =
@@ -134,8 +141,10 @@ class AccountingRepo(private val db: AppDatabase) {
             else -> CASH
         }
         val detail = if (itemCount > 0) "$itemCount item${if (itemCount == 1) "" else "s"}" else "sale"
-        post(particulars = "Sales — $detail ($receiptNo)", source = "POS",
-            debits = listOf(debitAccount to amount), credits = listOf(SALES to amount))
+        if (amount > 0) {
+            post(particulars = "Sales — $detail ($receiptNo)", source = "POS",
+                debits = listOf(debitAccount to amount), credits = listOf(SALES to amount))
+        }
         // Cost of sales: keeps the Stock account in step with physical stock
         if (costTotal > 0) {
             post(particulars = "Cost of sales — $detail ($receiptNo)", source = "POS",
@@ -151,6 +160,33 @@ class AccountingRepo(private val db: AppDatabase) {
         else if (deltaValue < 0)
             post(particulars = "Stock reduction ($note)", source = "STOCK",
                 debits = listOf(SUNDAY_RUN to -deltaValue), credits = listOf(STOCK to -deltaValue))
+    }
+
+    /**
+     * Post the value change of an edited stock item so the Stock account always
+     * equals the physical stock list (qty x cost), no matter what changed:
+     *  - qty UP: the increase is a purchase paid in cash (Dr Stock, Cr Cash)
+     *  - value UP with qty same/lower (cost price raised): revaluation gain
+     *    (Dr Stock, Cr Stock Revaluation Gain)
+     *  - value DOWN: write-off (Dr Sundry Expenses, Cr Stock)
+     */
+    suspend fun postStockEdit(oldQty: Double, oldCost: Double,
+                              newQty: Double, newCost: Double, note: String) {
+        val oldValue = oldQty * oldCost
+        val newValue = newQty * newCost
+        val deltaValue = newValue - oldValue
+        val qtyDelta = newQty - oldQty
+        when {
+            deltaValue > 0 && qtyDelta > 0 ->
+                post(particulars = "Stock top-up ($note)", source = "STOCK",
+                    debits = listOf(STOCK to deltaValue), credits = listOf(CASH to deltaValue))
+            deltaValue > 0 ->
+                post(particulars = "Stock revaluation gain ($note)", source = "STOCK",
+                    debits = listOf(STOCK to deltaValue), credits = listOf(REVAL to deltaValue))
+            deltaValue < 0 ->
+                post(particulars = "Stock reduction ($note)", source = "STOCK",
+                    debits = listOf(SUNDAY_RUN to -deltaValue), credits = listOf(STOCK to -deltaValue))
+        }
     }
 
     /** Stock removed from the business (delete/write-off): Cr Stock, Dr Sundry expense. */
@@ -196,6 +232,59 @@ class AccountingRepo(private val db: AppDatabase) {
             income, expenses,
             income.sumOf { it.second }, expenses.sumOf { it.second }
         )
+    }
+
+    /**
+     * Self-check: verifies the three invariants that guarantee the books are
+     * correct. Returns null when everything balances, or a human-readable
+     * description of what is off (for diagnostics/logging).
+     */
+    data class SelfCheckResult(
+        val debitsEqCredits: Boolean,
+        val stockMatchesLedger: Boolean,
+        val debtorsMatchCustomers: Boolean,
+        val totalDebits: Double, val totalCredits: Double,
+        val ledgerStockValue: Double, val physicalStockValue: Double,
+        val ledgerDebtors: Double, val customerBalances: Double
+    ) {
+        val ok: Boolean get() = debitsEqCredits && stockMatchesLedger && debtorsMatchCustomers
+        fun describe(): String = buildString {
+            if (!debitsEqCredits) appendLine("Ledger out of balance: Dr $totalDebits vs Cr $totalCredits")
+            if (!stockMatchesLedger) appendLine("Stock account UGX ${"%,.0f".format(ledgerStockValue)} != stock list UGX ${"%,.0f".format(physicalStockValue)}")
+            if (!debtorsMatchCustomers) appendLine("Debtors account UGX ${"%,.0f".format(ledgerDebtors)} != customer balances UGX ${"%,.0f".format(customerBalances)}")
+            if (ok) appendLine("All book checks passed")
+        }
+    }
+
+    suspend fun selfCheck(): SelfCheckResult {
+        val totalDr = db.journalDao().totalDebits()
+        val totalCr = db.journalDao().totalCredits()
+        val ledgerStock = cashBalanceLike(STOCK)
+        val physicalStock = try {
+            db.productDao().observeBranchProducts("").first().sumOf { it.stockQty * it.costPrice }
+        } catch (_: Exception) { 0.0 }
+        // all products regardless of branch
+        val physicalStockAll = try {
+            db.productDao().allProductsOnce().sumOf { it.stockQty * it.costPrice }
+        } catch (_: Exception) { physicalStock }
+        val ledgerDebtors = cashBalanceLike(DEBTORS)
+        val custBalances = try {
+            db.customerDao().allOnce().sumOf { it.balance }
+        } catch (_: Exception) { 0.0 }
+        return SelfCheckResult(
+            debitsEqCredits = kotlin.math.abs(totalDr - totalCr) < 0.01,
+            stockMatchesLedger = kotlin.math.abs(ledgerStock - physicalStockAll) < 0.01,
+            debtorsMatchCustomers = kotlin.math.abs(ledgerDebtors - custBalances) < 0.01,
+            totalDebits = totalDr, totalCredits = totalCr,
+            ledgerStockValue = ledgerStock, physicalStockValue = physicalStockAll,
+            ledgerDebtors = ledgerDebtors, customerBalances = custBalances
+        )
+    }
+
+    /** Net (Dr-Cr) balance of any account over all time. */
+    private suspend fun cashBalanceLike(accountId: String): Double {
+        val tb = trialBalance("1970-01-01T00:00:00.000Z", "2999-12-31T23:59:59.999Z")
+        return tb.firstOrNull { it.accountId == accountId }?.netBalance ?: 0.0
     }
 
     suspend fun cashBalance(accountId: String = CASH): Double {

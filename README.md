@@ -145,3 +145,27 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   it only re-checked connectivity
 - Discount box now auto-fills correctly when a held sale with a discount is
   resumed, and clears with the cart
+
+## v0.8.0 — accounting correctness rebuild (ledger auto-generation)
+- GENERAL LEDGER now generates itself from the books of original entry, LIVE:
+  every POS sale, expense, repayment, stock purchase and manual entry posts
+  itself into the Ledger the instant it happens, with proper DEBIT / CREDIT /
+  BALANCE columns (no re-typing, no manual posting)
+- Cash Book (and Petty / Bank-MoMo books) now update live too — a sale appears
+  the moment it's checked out
+- Fixed 6 real ledger errors found in the audit:
+  1. manual stock adjustments (+/- buttons) posted nothing to the books
+  2. editing an item's COST price posted nothing (stock value silently drifted)
+  3. POS quick-add posted purchases at RETAIL instead of COST price
+  4. the Add Product dialog ignored opening stock in the books entirely
+  5. sale posting wasn't atomic with the sale (a failure could leave books
+     behind) — now one transaction
+  6. ledger/cash-book didn't refresh automatically
+- Every save is atomic now: sale, expense, repayment, stock change and product
+  creation post to the books in the SAME transaction or not at all
+- POS can no longer oversell — quantity is capped at real shelf stock with a
+  visible warning (stock and books can never go negative)
+- New ledger account 4900 Stock Revaluation Gain (cost-price changes post
+  correctly); existing installs receive new accounts automatically
+- Built-in book self-check runs on Home: debits = credits, Stock account =
+  stock list value, Debtors = customer balances; any mismatch is logged

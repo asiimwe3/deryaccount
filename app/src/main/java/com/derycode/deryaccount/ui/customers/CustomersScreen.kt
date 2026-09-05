@@ -12,6 +12,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.derycode.deryaccount.accounting.AccountingRepo
+import androidx.room.withTransaction
 import com.derycode.deryaccount.data.local.AppDatabase
 import com.derycode.deryaccount.data.local.entity.Customer
 import kotlinx.coroutines.launch
@@ -133,17 +134,21 @@ private fun RepayDialog(db: AppDatabase, customer: Customer, onDone: () -> Unit)
                 if (amt == null || amt <= 0) { error = "Enter a valid amount"; return@Button }
                 if (amt > customer.balance) { error = "More than owed — pay UGX %,d".format(customer.balance.toLong()); return@Button }
                 scope.launch {
-                    val now = nowIso()
-                    db.customerDao().upsert(customer.copy(
-                        balance = customer.balance - amt, updatedAt = now, syncState = "pending"))
-                    // Books: money came in — Dr Cash, Cr Debtors
                     try {
-                        val accounting = AccountingRepo(db)
-                        accounting.ensureSeeded()
-                        accounting.recordReceipt(
-                            AccountingRepo.CASH, AccountingRepo.DEBTORS, amt,
-                            "Repayment — ${customer.name}")
-                    } catch (_: Exception) { /* balance already saved */ }
+                        val now = nowIso()
+                        // Atomic: customer balance and the Cash Book entry move
+                        // together, or neither does.
+                        db.withTransaction {
+                            db.customerDao().upsert(customer.copy(
+                                balance = customer.balance - amt, updatedAt = now, syncState = "pending"))
+                            // Books: money came in — Dr Cash, Cr Debtors
+                            val accounting = AccountingRepo(db)
+                            accounting.ensureSeeded()
+                            accounting.recordReceipt(
+                                AccountingRepo.CASH, AccountingRepo.DEBTORS, amt,
+                                "Repayment — ${customer.name}")
+                        }
+                    } catch (_: Exception) { }
                     onDone()
                 }
             }) { Text("Record") }

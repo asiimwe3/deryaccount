@@ -66,7 +66,11 @@ fun BooksScreen(db: AppDatabase, accounting: AccountingRepo, initialTab: Int = 0
     }
 }
 
-private data class BookRow(val date: String, val voucher: String, val particulars: String, val effect: Double)
+private data class BookRow(
+    val date: String, val voucher: String, val particulars: String, val effect: Double,
+    val debit: Double = 0.0,   // explicit Dr for ledger rows (0 = derive from effect)
+    val credit: Double = 0.0   // explicit Cr for ledger rows (0 = derive from effect)
+)
 
 // ----------------------------------------------------------------
 // CASH BOOK
@@ -82,18 +86,21 @@ private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo,
     var showEntryDialog by remember { mutableStateOf(false) }
     var showPayment by remember { mutableStateOf(false) }
 
-    suspend fun reload() {
+    // Seed once, then watch the journal LIVE: every posting from any source
+    // (POS sale, expense, repayment, stock entry, manual receipt/payment)
+    // flows into the Cash Book the moment it happens.
+    LaunchedEffect(bookCode) {
         accounting.ensureSeeded()
         accounts = db.accountDao().all()
-        val cash = db.accountDao().byCode(bookCode) ?: return
+        val cash = db.accountDao().byCode(bookCode) ?: return@LaunchedEffect
         opening = db.journalDao().balanceBefore(cash.id, monthStart())
-        val list = db.journalDao().observeAccountEntries(cash.id, monthStart(), todayEnd()).first()
-        rows = list.sortedByDescending { it.entryDate }.map {
-            BookRow(it.entryDate, it.voucherNo, it.particulars, it.cashEffect)
-        }
+        db.journalDao().observeAccountEntries(cash.id, monthStart(), todayEnd())
+            .collect { list ->
+                rows = list.sortedByDescending { it.entryDate }.map {
+                    BookRow(it.entryDate, it.voucherNo, it.particulars, it.cashEffect)
+                }
+            }
     }
-
-    LaunchedEffect(bookCode) { reload() }
 
     val cashBooks = accounts.filter { it.isCash }
     val bookName = cashBooks.firstOrNull { it.code == bookCode }?.name ?: "Cash Book"
@@ -177,17 +184,20 @@ private fun CashBookTab(db: AppDatabase, accounting: AccountingRepo,
 
     if (showEntryDialog) {
         NewEntryDialog(accounting, accounts,
-            onDone = { showEntryDialog = false; scope.launch { reload() } })
+            onDone = { showEntryDialog = false })
     }
     if (showPayment) {
         NewEntryDialog(accounting, accounts, initialReceipt = false,
-            onDone = { showPayment = false; scope.launch { reload() } })
+            onDone = { showPayment = false })
     }
 }
 
 /** Ruled cashbook table — shared by Cash Book and Ledger. */
 @Composable
-private fun BookTable(modifier: Modifier = Modifier, rows: List<BookRow>, opening: Double = 0.0) {
+private fun BookTable(
+    modifier: Modifier = Modifier, rows: List<BookRow>, opening: Double = 0.0,
+    ledgerMode: Boolean = false, emptyText: String = "No entries yet. Tap New Entry to record money received or paid."
+) {
     val da = com.derycode.deryaccount.ui.theme.DaGreen
     val red = com.derycode.deryaccount.ui.theme.DaRed
     val muted = com.derycode.deryaccount.ui.theme.DaTextMuted
@@ -205,8 +215,8 @@ private fun BookTable(modifier: Modifier = Modifier, rows: List<BookRow>, openin
                 Text("DATE", Modifier.weight(0.65f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
                 Text("VOUCHER", Modifier.weight(0.6f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
                 Text("PARTICULARS", Modifier.weight(1.7f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
-                Text("RECEIPTS (UGX)", Modifier.weight(0.85f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
-                Text("PAYMENTS (UGX)", Modifier.weight(0.85f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
+                Text(if (ledgerMode) "DEBIT (UGX)" else "RECEIPTS (UGX)", Modifier.weight(0.85f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
+                Text(if (ledgerMode) "CREDIT (UGX)" else "PAYMENTS (UGX)", Modifier.weight(0.85f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
                 Text("BALANCE", Modifier.weight(0.85f), fontWeight = FontWeight.Bold, fontSize = 10.sp, color = muted)
             }
             Divider(color = outline)
@@ -223,18 +233,26 @@ private fun BookTable(modifier: Modifier = Modifier, rows: List<BookRow>, openin
                     Divider(color = outline.copy(alpha = 0.5f))
                 }
                 if (rows.isEmpty()) item {
-                    Text("No entries yet. Tap New Entry to record money received or paid.",
+                    Text(emptyText,
                         fontSize = 12.sp, color = muted,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp))
                 }
                 items(withBalance) { (e, bal) ->
+                    // Dr/Cr columns: explicit for ledger rows, derived from the
+                    // net effect for cash-book rows (same look as before).
+                    val dr = if (e.debit > 0) e.debit
+                             else if (e.debit == 0.0 && e.credit == 0.0 && e.effect > 0) e.effect
+                             else 0.0
+                    val cr = if (e.credit > 0) e.credit
+                             else if (e.debit == 0.0 && e.credit == 0.0 && e.effect < 0) -e.effect
+                             else 0.0
                     Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 5.dp)) {
                         Text(shortDate(e.date), Modifier.weight(0.65f), fontSize = 11.sp, color = text)
                         Text(e.voucher, Modifier.weight(0.6f), fontSize = 10.sp, color = muted)
                         Text(e.particulars, Modifier.weight(1.7f), fontSize = 11.sp, color = text, maxLines = 2)
-                        Text(if (e.effect > 0) fmt(e.effect) else "", Modifier.weight(0.85f),
+                        Text(if (dr > 0) fmt(dr) else "", Modifier.weight(0.85f),
                             fontSize = 11.sp, color = da, fontWeight = FontWeight.Bold)
-                        Text(if (e.effect < 0) fmt(-e.effect) else "", Modifier.weight(0.85f),
+                        Text(if (cr > 0) fmt(cr) else "", Modifier.weight(0.85f),
                             fontSize = 11.sp, color = red, fontWeight = FontWeight.Bold)
                         Text(fmt(bal), Modifier.weight(0.85f), fontSize = 11.sp, color = text, fontWeight = FontWeight.SemiBold)
                     }
@@ -372,10 +390,16 @@ private fun LedgerTab(db: AppDatabase, accounting: AccountingRepo, context: andr
     LaunchedEffect(selected) {
         val acc = selected ?: return@LaunchedEffect
         opening = db.journalDao().balanceBefore(acc, monthStart())
-        val list = db.journalDao().observeAccountEntries(acc, monthStart(), todayEnd()).first()
-        rows = list.sortedByDescending { it.entryDate }.map {
-            BookRow(it.entryDate, it.voucherNo, it.particulars, it.cashEffect)
-        }
+        // LIVE: the ledger builds itself out of the journal, and updates the
+        // instant any book of original entry (Cash Book, POS sale, expense,
+        // repayment, stock purchase) posts a new entry.
+        db.journalDao().observeAccountEntries(acc, monthStart(), todayEnd())
+            .collect { list ->
+                rows = list.sortedByDescending { it.entryDate }.map {
+                    BookRow(it.entryDate, it.voucherNo, it.particulars,
+                        it.cashEffect, it.debitTotal, it.creditTotal)
+                }
+            }
     }
 
     Column(Modifier.fillMaxSize().padding(8.dp)) {
@@ -386,7 +410,8 @@ private fun LedgerTab(db: AppDatabase, accounting: AccountingRepo, context: andr
             fontSize = 18.sp, fontWeight = FontWeight.ExtraBold,
             color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(4.dp))
-        BookTable(Modifier.weight(1f), rows, opening)
+        BookTable(Modifier.weight(1f), rows, opening, ledgerMode = true,
+            emptyText = "No entries this month. Every receipt, payment, sale, expense and stock entry posts itself here automatically.")
         OutlinedButton(onClick = { printBook(context, "Ledger", opening, rows) },
             modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Default.Print, null); Text("  Print / Save PDF")

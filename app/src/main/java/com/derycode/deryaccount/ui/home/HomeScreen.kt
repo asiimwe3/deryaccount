@@ -51,6 +51,7 @@ fun HomeScreen(
     onNavigate: (String) -> Unit
 ) {
     val accounting = remember { AccountingRepo(db) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     var stats by remember { mutableStateOf(HomeStats()) }
     var loading by remember { mutableStateOf(true) }
 
@@ -77,6 +78,19 @@ fun HomeScreen(
 
         stats = HomeStats(cash, sales, stockVal, expenses)
         loading = false
+
+        // Book integrity self-check: debits must equal credits, the Stock
+        // account must equal the physical stock list, Debtors must equal the
+        // customers' balances. Any mismatch is logged to DeryAccount/crashes
+        // so it can be traced and repaired.
+        try {
+            val check = accounting.selfCheck()
+            if (!check.ok) {
+                com.derycode.deryaccount.util.DbSafety.log(
+                    context, "Books self-check",
+                    IllegalStateException(check.describe().trim()))
+            }
+        } catch (_: Exception) { }
     }
 
     Column(

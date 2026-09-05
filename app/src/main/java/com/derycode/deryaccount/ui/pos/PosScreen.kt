@@ -115,6 +115,16 @@ fun PosScreen(
         }
         Spacer(Modifier.height(4.dp))
 
+        // ---- Transient error line (stock guards, checkout problems) ----
+        ui.error?.let { msg ->
+            LaunchedEffect(msg) {
+                kotlinx.coroutines.delay(4000)
+                viewModel.dismissError()
+            }
+            Text(msg, color = DaRed, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+        }
+
         // ---- Hero banner: free for the first 100 ----
         if (showBanner) {
             Surface(

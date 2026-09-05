@@ -119,6 +119,16 @@ class PosRepository(private val context: Context, private val db: AppDatabase) {
                     db.customerDao().upsert(c.copy(balance = c.balance + total, updatedAt = now, syncState = "pending"))
                 }
             }
+            // Books of account, ATOMIC with the sale itself: Dr Cash/MoMo/Debtors,
+            // Cr Sales, plus Dr COGS / Cr Stock at cost. If any part fails the
+            // whole sale rolls back — the ledger can never drift from the sales.
+            val accounting = com.derycode.deryaccount.accounting.AccountingRepo(db)
+            accounting.ensureSeeded()
+            accounting.postSale(
+                total, paymentMethod, receiptNo,
+                items.size,
+                lines.sumOf { it.qty * it.product.costPrice }
+            )
         }
 
         return CheckoutResult(sale, items, change, createdOffline = true)

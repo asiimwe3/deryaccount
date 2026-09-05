@@ -13,6 +13,10 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE isDeleted = 0 AND branchId = :branchId ORDER BY isFavourite DESC, name COLLATE NOCASE ASC")
     fun catalogueForBranch(branchId: String): Flow<List<Product>>
 
+    /** Every product in every branch (stock self-check). */
+    @Query("SELECT * FROM products WHERE isDeleted = 0")
+    suspend fun allProductsOnce(): List<Product>
+
     /** Star / unstar a fast seller. */
     @Query("UPDATE products SET isFavourite = :fav WHERE id = :id")
     suspend fun setFavourite(id: String, fav: Boolean)
@@ -216,6 +220,10 @@ interface CustomerDao {
     @Query("SELECT * FROM customers WHERE isDeleted = 0 AND (name LIKE '%' || :q || '%' OR phone LIKE '%' || :q || '%') LIMIT 20")
     suspend fun search(q: String): List<Customer>
 
+    /** Every customer (debtors self-check). */
+    @Query("SELECT * FROM customers WHERE isDeleted = 0")
+    suspend fun allOnce(): List<Customer>
+
     @Query("SELECT * FROM customers WHERE id = :id")
     suspend fun get(id: String): Customer?
 
@@ -347,7 +355,9 @@ interface AccountDao {
 interface JournalDao {
     @androidx.room.RewriteQueriesToDropUnusedColumns
     @Query("""
-        SELECT je.*, COALESCE(SUM(jl.debit - jl.credit), 0) AS cashEffect
+        SELECT je.*, COALESCE(SUM(jl.debit), 0) AS debitTotal,
+               COALESCE(SUM(jl.credit), 0) AS creditTotal,
+               COALESCE(SUM(jl.debit - jl.credit), 0) AS cashEffect
         FROM journal_entries je
         JOIN journal_lines jl ON jl.entryId = je.id
         WHERE jl.accountId = :accountId AND je.entryDate BETWEEN :from AND :to
@@ -384,6 +394,13 @@ interface JournalDao {
     @Insert
     suspend fun insertLines(lines: List<JournalLine>)
 
+    /** Total debits and credits across the whole ledger (for the self-check). */
+    @Query("SELECT COALESCE(SUM(debit), 0) FROM journal_lines")
+    suspend fun totalDebits(): Double
+
+    @Query("SELECT COALESCE(SUM(credit), 0) FROM journal_lines")
+    suspend fun totalCredits(): Double
+
     @Query("SELECT COUNT(*) FROM journal_entries")
     suspend fun entryCount(): Int
 }
@@ -394,7 +411,9 @@ data class AccountEntryView(
     val entryDate: String,
     val voucherNo: String,
     val particulars: String,
-    val cashEffect: Double   // debit - credit from this account's perspective
+    val debitTotal: Double,  // total debited to this account in the entry
+    val creditTotal: Double, // total credited to this account in the entry
+    val cashEffect: Double    // debit - credit from this account's perspective
 )
 
 /** Trial balance row. */

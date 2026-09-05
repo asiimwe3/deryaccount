@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.derycode.deryaccount.catalog.BusinessCatalog
+import androidx.room.withTransaction
 import com.derycode.deryaccount.data.local.AppDatabase
 import com.derycode.deryaccount.data.local.entity.Product
 import com.derycode.deryaccount.data.local.entity.StockMovement
@@ -65,23 +66,25 @@ fun QuickAddStockDialog(
             onAdd = { picked, customName, customPrice, customQty, customCost ->
                 scope.launch {
                     try {
-                        db.createProducts(picked, category!!, branchId)
-                        if (customName.isNotBlank() && customPrice > 0) {
-                            db.createProducts(listOf(
-                                Picked(BusinessCatalog.CatalogItem(customName, "pcs", customPrice),
-                                    customQty, customCost)
-                            ), category!!, branchId)
-                        }
-                        // Post to the books: Dr Stock, Cr Cash — at COST price x qty,
-                        // so closing stock in the books always matches the Stock screen.
-                        try {
+                        // Atomic: the products AND their purchase entry are saved
+                        // together or not at all.
+                        db.withTransaction {
+                            db.createProducts(picked, category!!, branchId)
+                            if (customName.isNotBlank() && customPrice > 0) {
+                                db.createProducts(listOf(
+                                    Picked(BusinessCatalog.CatalogItem(customName, "pcs", customPrice),
+                                        customQty, customCost)
+                                ), category!!, branchId)
+                            }
+                            // Post to the books: Dr Stock, Cr Cash — at COST price x qty,
+                            // so closing stock in the books always matches the Stock screen.
                             val total = picked.sumOf { it.qty * it.cost } +
                                 (if (customName.isNotBlank()) customQty * customCost else 0.0)
                             com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
                                 ensureSeeded()
                                 postPurchase(total, "CASH", "opening stock")
                             }
-                        } catch (_: Exception) { /* stock already saved */ }
+                        }
                         onDone()
                     } catch (e: Exception) {
                         com.derycode.deryaccount.util.DbSafety.log(context, "QuickAddStock", e)

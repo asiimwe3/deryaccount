@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.derycode.deryaccount.data.local.AppDatabase
 import com.derycode.deryaccount.data.local.entity.Sale
 import com.derycode.deryaccount.data.local.entity.SaleItem
+import androidx.room.withTransaction
 import com.derycode.deryaccount.data.repository.PosRepository
 import com.derycode.deryaccount.util.EscPosPrinter
 import kotlinx.coroutines.flow.*
@@ -73,25 +74,29 @@ class PosViewModel(
             val now = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
                 .format(java.util.Date())
             val id = java.util.UUID.randomUUID().toString()
-            db.productDao().upsert(com.derycode.deryaccount.data.local.entity.Product(
-                id = id, name = name, barcode = barcode, category = "General", unit = "pcs",
-                costPrice = cost, retailPrice = price, wholesalePrice = null,
-                stockQty = qty, lowStockAlert = 5.0, expiryDate = null,
-                branchId = branchId, createdAt = now, updatedAt = now
-            ))
-            if (qty > 0) db.stockMovementDao().upsert(
-                com.derycode.deryaccount.data.local.entity.StockMovement(
-                    id = java.util.UUID.randomUUID().toString(), productId = id,
-                    branchId = branchId, type = "PURCHASE", qty = qty,
-                    reference = null, note = "quick add", movedAt = now,
-                    createdAt = now, updatedAt = now))
-            // Books: Dr Stock, Cr Cash for the stock just created
-            try {
-                com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
-                    ensureSeeded()
-                    postPurchase(price * qty, "CASH", "quick add $name")
+            // Atomic: product, movement and purchase entry save together or not at
+            // all — and the purchase posts at COST (not retail) so the Stock
+            // account always equals the stock list.
+            db.withTransaction {
+                db.productDao().upsert(com.derycode.deryaccount.data.local.entity.Product(
+                    id = id, name = name, barcode = barcode, category = "General", unit = "pcs",
+                    costPrice = cost, retailPrice = price, wholesalePrice = null,
+                    stockQty = qty, lowStockAlert = 5.0, expiryDate = null,
+                    branchId = branchId, createdAt = now, updatedAt = now
+                ))
+                if (qty > 0) db.stockMovementDao().upsert(
+                    com.derycode.deryaccount.data.local.entity.StockMovement(
+                        id = java.util.UUID.randomUUID().toString(), productId = id,
+                        branchId = branchId, type = "PURCHASE", qty = qty,
+                        reference = null, note = "quick add", movedAt = now,
+                        createdAt = now, updatedAt = now))
+                if (cost * qty > 0) {
+                    com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
+                        ensureSeeded()
+                        postPurchase(cost * qty, "CASH", "quick add $name")
+                    }
                 }
-            } catch (_: Exception) { }
+            }
             db.productDao().get(id)?.let { addProductInternal(it) }
         }
     }
@@ -161,14 +166,18 @@ class PosViewModel(
         _uiState.update { st ->
             val existing = st.cart.find { it.product.id == p.id }
             val saleType = st.saleType
-            val cart = if (existing != null) {
-                val newQty = existing.qty + 1
-                val price = repo.priceFor(p, newQty, saleType)
-                st.cart.map { if (it.product.id == p.id) it.copy(qty = newQty, unitPrice = price) else it }
-            } else {
-                val price = repo.priceFor(p, 1.0, saleType)
-                st.cart + CartLineUi(p, 1.0, price)
+            if (p.stockQty <= 0) {
+                return@update recompute(st.copy(error = "${p.name} is out of stock"))
             }
+            val newQty = (existing?.qty ?: 0.0) + 1
+            if (newQty > p.stockQty) {
+                return@update recompute(st.copy(
+                    error = "Only ${fmtNum(p.stockQty)} ${p.name} in stock"))
+            }
+            val price = repo.priceFor(p, newQty, saleType)
+            val cart = if (existing != null)
+                st.cart.map { if (it.product.id == p.id) it.copy(qty = newQty, unitPrice = price) else it }
+            else st.cart + CartLineUi(p, newQty, price)
             recompute(st.copy(cart = cart))
         }
     }
@@ -177,14 +186,25 @@ class PosViewModel(
     fun addProductQty(p: com.derycode.deryaccount.data.local.entity.Product, qty: Double) {
         if (qty <= 0) return
         _uiState.update { st ->
+            if (p.stockQty <= 0) {
+                return@update recompute(st.copy(error = "${p.name} is out of stock"))
+            }
             val existing = st.cart.find { it.product.id == p.id }
-            val newQty = (existing?.qty ?: 0.0) + qty
+            var newQty = (existing?.qty ?: 0.0) + qty
+            var capped = false
+            if (newQty > p.stockQty) { newQty = p.stockQty; capped = true }
             val price = repo.priceFor(p, newQty, st.saleType)
             val cart = if (existing != null)
                 st.cart.map { if (it.product.id == p.id) it.copy(qty = newQty, unitPrice = price) else it }
             else st.cart + CartLineUi(p, newQty, price)
-            recompute(st.copy(cart = cart))
+            recompute(st.copy(cart = cart,
+                error = if (capped) "Only ${fmtNum(p.stockQty)} ${p.name} in stock" else st.error))
         }
+    }
+
+    /** Clear the transient error line on the Sell screen. */
+    fun dismissError() {
+        _uiState.update { it.copy(error = null) }
     }
 
     /** Attach a customer to the cart before checkout — works for cash/MoMo too, not just credit. */
@@ -194,17 +214,31 @@ class PosViewModel(
 
     fun setQty(productId: String, qty: Double) {
         _uiState.update { st ->
-            if (qty <= 0) st.copy(cart = st.cart.filter { it.product.id != productId }).let(::recompute)
+            val line = st.cart.find { it.product.id == productId } ?: return@update st
+            if (qty <= 0) recompute(st.copy(cart = st.cart.filter { it.product.id != productId }))
             else {
-                val price = repo.priceFor(
-                    st.cart.find { it.product.id == productId }?.product
-                        ?: return@update st, qty, st.saleType)
-                recompute(st.copy(cart = st.cart.map {
-                    if (it.product.id == productId) it.copy(qty = qty, unitPrice = price) else it
-                }))
+                // Real stock only — the books must never go negative.
+                val available = line.product.stockQty
+                if (qty > available) {
+                    val clampedCart = st.cart.map {
+                        if (it.product.id == productId)
+                            it.copy(qty = available, unitPrice = repo.priceFor(it.product, available, st.saleType))
+                        else it
+                    }
+                    recompute(st.copy(cart = clampedCart,
+                        error = "Only ${fmtNum(available)} ${line.product.name} in stock"))
+                } else {
+                    val price = repo.priceFor(line.product, qty, st.saleType)
+                    recompute(st.copy(cart = st.cart.map {
+                        if (it.product.id == productId) it.copy(qty = qty, unitPrice = price) else it
+                    }))
+                }
             }
         }
     }
+
+    private fun fmtNum(v: Double): String =
+        if (v % 1.0 == 0.0) v.toLong().toString() else v.toString()
 
     fun removeLine(productId: String) {
         _uiState.update { recompute(it.copy(cart = it.cart.filter { l -> l.product.id != productId })) }
@@ -309,15 +343,7 @@ class PosViewModel(
                     amountPaid = amountPaid, paymentMethod = method,
                     discount = st.discount
                 )
-                // Post to the books of account: Dr Cash/MoMo/Debtors, Cr Sales
-                try {
-                    com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
-                        ensureSeeded()
-                        postSale(result.sale.total, result.sale.paymentMethod,
-                            result.sale.receiptNo, result.items.size,
-                            st.cart.sumOf { it.qty * it.product.costPrice })
-                    }
-                } catch (_: Exception) { /* sale already saved; ledger retryable later */ }
+                // (Books are posted atomically inside repo.checkout — see PosRepository.)
                 // Business profile: the shop's own name & details on the receipt
                 val profile = try {
                     com.derycode.deryaccount.util.SessionManager(appContext).businessProfileNow()

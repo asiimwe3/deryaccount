@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.sp
+import androidx.room.withTransaction
 import com.derycode.deryaccount.data.local.AppDatabase
 import com.derycode.deryaccount.util.PdfExport
 import com.derycode.deryaccount.data.local.entity.Product
@@ -101,14 +102,21 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
                             val now = nowIso()
                             scope.launch {
                                 try {
-                                db.productDao().adjustStock(p.id, delta, now)
-                                db.stockMovementDao().upsert(
-                                    com.derycode.deryaccount.data.local.entity.StockMovement(
-                                        id = java.util.UUID.randomUUID().toString(),
-                                        productId = p.id, branchId = branchId, type = "ADJUSTMENT",
-                                        qty = delta, reference = null, note = "manual adjust", movedAt = now,
-                                        createdAt = now, updatedAt = now
-                                    ))
+                                    db.withTransaction {
+                                        db.productDao().adjustStock(p.id, delta, now)
+                                        db.stockMovementDao().upsert(
+                                            com.derycode.deryaccount.data.local.entity.StockMovement(
+                                                id = java.util.UUID.randomUUID().toString(),
+                                                productId = p.id, branchId = branchId, type = "ADJUSTMENT",
+                                                qty = delta, reference = null, note = "manual adjust", movedAt = now,
+                                                createdAt = now, updatedAt = now
+                                            ))
+                                        // Books stay in step with the stock list — value at COST
+                                        val accounting = com.derycode.deryaccount.accounting.AccountingRepo(db)
+                                        accounting.ensureSeeded()
+                                        accounting.postStockEdit(p.stockQty, p.costPrice,
+                                            p.stockQty + delta, p.costPrice, p.name)
+                                    }
                                 } catch (e: Exception) {
                                     com.derycode.deryaccount.util.DbSafety.log(context, "Stock adjust", e)
                                     error = com.derycode.deryaccount.util.DbSafety.friendly(e)
@@ -136,13 +144,14 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
                 Button(onClick = {
                     scope.launch {
                         try {
-                            val acc = com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
-                                ensureSeeded()
-                                postStockWriteOff(p.stockQty * p.costPrice, p.name)
+                            // Atomic: the write-off and the deletion succeed or
+                            // fail together — books and stock list can't drift.
+                            db.withTransaction {
+                                val acc = com.derycode.deryaccount.accounting.AccountingRepo(db)
+                                acc.ensureSeeded()
+                                acc.postStockWriteOff(p.stockQty * p.costPrice, p.name)
+                                db.productDao().delete(p.id)
                             }
-                        } catch (_: Exception) {}
-                        try {
-                            db.productDao().delete(p.id)
                         } catch (e: Exception) {
                             com.derycode.deryaccount.util.DbSafety.log(context, "Delete product", e)
                             error = com.derycode.deryaccount.util.DbSafety.friendly(e)
@@ -254,24 +263,24 @@ private fun EditProductDialog(db: AppDatabase, p: Product, onDone: () -> Unit) {
                   try {
                     val now = nowIso()
                     val delta = q - p.stockQty
-                    val deltaValue = delta * cs
-                    db.productDao().upsert(p.copy(
-                        name = name.ifBlank { p.name },
-                        retailPrice = pr, costPrice = cs, stockQty = q,
-                        lowStockAlert = al, updatedAt = now))
-                    if (delta != 0.0) {
-                        db.stockMovementDao().upsert(
-                            com.derycode.deryaccount.data.local.entity.StockMovement(
-                                id = java.util.UUID.randomUUID().toString(),
-                                productId = p.id, branchId = p.branchId, type = "ADJUSTMENT",
-                                qty = delta, reference = null, note = "edit item", movedAt = now,
-                                createdAt = now, updatedAt = now))
-                        try {
-                            com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
-                                ensureSeeded()
-                                postStockChange(deltaValue, p.name)
-                            }
-                        } catch (_: Exception) {}
+                    db.withTransaction {
+                        db.productDao().upsert(p.copy(
+                            name = name.ifBlank { p.name },
+                            retailPrice = pr, costPrice = cs, stockQty = q,
+                            lowStockAlert = al, updatedAt = now))
+                        if (delta != 0.0) {
+                            db.stockMovementDao().upsert(
+                                com.derycode.deryaccount.data.local.entity.StockMovement(
+                                    id = java.util.UUID.randomUUID().toString(),
+                                    productId = p.id, branchId = p.branchId, type = "ADJUSTMENT",
+                                    qty = delta, reference = null, note = "edit item", movedAt = now,
+                                    createdAt = now, updatedAt = now))
+                        }
+                        // Books follow the FULL value change (qty AND cost price),
+                        // so the Stock account always equals the stock list.
+                        val accounting = com.derycode.deryaccount.accounting.AccountingRepo(db)
+                        accounting.ensureSeeded()
+                        accounting.postStockEdit(p.stockQty, p.costPrice, q, cs, p.name)
                     }
                     onDone()
                   } catch (e: Exception) {
@@ -323,25 +332,36 @@ private fun AddProductDialog(db: AppDatabase, branchId: String, onDone: () -> Un
                 scope.launch {
                     try {
                     val id = java.util.UUID.randomUUID().toString()
-                    db.productDao().upsert(Product(
-                        id = id, name = name, barcode = barcode.ifBlank { null },
-                        category = "General", unit = "pcs",
-                        costPrice = cost.toDoubleOrNull() ?: 0.0,
-                        retailPrice = price.toDoubleOrNull() ?: 0.0,
-                        wholesalePrice = null, taxRate = 0.0,
-                        stockQty = stock.toDoubleOrNull() ?: 0.0,
-                        lowStockAlert = 5.0, expiryDate = null, branchId = branchId,
-                        createdAt = now, updatedAt = now
-                    ))
-                    if ((stock.toDoubleOrNull() ?: 0.0) > 0) {
-                        db.stockMovementDao().upsert(
-                            com.derycode.deryaccount.data.local.entity.StockMovement(
-                                id = java.util.UUID.randomUUID().toString(), productId = id,
-                                branchId = branchId, type = "PURCHASE",
-                                qty = stock.toDoubleOrNull() ?: 0.0,
-                                reference = null, note = "opening stock", movedAt = now,
-                                createdAt = now, updatedAt = now
-                            ))
+                    // Atomic: product, movement AND the purchase entry in the books
+                    // (Dr Stock, Cr Cash at cost x qty) save together or not at all.
+                    db.withTransaction {
+                        db.productDao().upsert(Product(
+                            id = id, name = name, barcode = barcode.ifBlank { null },
+                            category = "General", unit = "pcs",
+                            costPrice = cost.toDoubleOrNull() ?: 0.0,
+                            retailPrice = price.toDoubleOrNull() ?: 0.0,
+                            wholesalePrice = null, taxRate = 0.0,
+                            stockQty = stock.toDoubleOrNull() ?: 0.0,
+                            lowStockAlert = 5.0, expiryDate = null, branchId = branchId,
+                            createdAt = now, updatedAt = now
+                        ))
+                        val openingQty = stock.toDoubleOrNull() ?: 0.0
+                        val openingCost = cost.toDoubleOrNull() ?: 0.0
+                        if (openingQty > 0) {
+                            db.stockMovementDao().upsert(
+                                com.derycode.deryaccount.data.local.entity.StockMovement(
+                                    id = java.util.UUID.randomUUID().toString(), productId = id,
+                                    branchId = branchId, type = "PURCHASE",
+                                    qty = openingQty,
+                                    reference = null, note = "opening stock", movedAt = now,
+                                    createdAt = now, updatedAt = now
+                                ))
+                            // Books: Dr Stock, Cr Cash at COST x qty
+                            val accounting = com.derycode.deryaccount.accounting.AccountingRepo(db)
+                            accounting.ensureSeeded()
+                            accounting.postPurchase(openingQty * openingCost, "CASH",
+                                "opening stock — $name")
+                        }
                     }
                     onDone()
                     } catch (e: Exception) {

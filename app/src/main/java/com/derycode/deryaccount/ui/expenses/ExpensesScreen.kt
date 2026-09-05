@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.derycode.deryaccount.accounting.AccountingRepo
+import androidx.room.withTransaction
 import com.derycode.deryaccount.data.local.AppDatabase
 import com.derycode.deryaccount.data.local.entity.Expense
 import kotlinx.coroutines.launch
@@ -161,27 +162,35 @@ private fun AddExpenseDialog(
                 val amt = amount.toDoubleOrNull()
                 if (amt == null || amt <= 0) { error = "Enter a valid amount"; return@Button }
                 scope.launch {
-                    val now = nowIso()
-                    db.expenseDao().upsert(Expense(
-                        id = java.util.UUID.randomUUID().toString(),
-                        branchId = branchId, userId = userId,
-                        category = category, amount = amt,
-                        note = note.ifBlank { null }, spentAt = now,
-                        createdAt = now, updatedAt = now
-                    ))
-                    // Post to the books: Dr expense account, Cr cash
-                    val accounting = AccountingRepo(db)
-                    accounting.ensureSeeded()
-                    val expenseAccount = CATEGORIES.first { it.first == category }.second
-                    val cashAccount = when (paidFrom) {
-                        "PETTY" -> AccountingRepo.PETTY
-                        "BANK" -> AccountingRepo.BANK
-                        else -> AccountingRepo.CASH
+                    try {
+                        val now = nowIso()
+                        // Atomic: the expense row and its ledger entry are saved
+                        // together or not at all — books can never miss an expense.
+                        db.withTransaction {
+                            db.expenseDao().upsert(Expense(
+                                id = java.util.UUID.randomUUID().toString(),
+                                branchId = branchId, userId = userId,
+                                category = category, amount = amt,
+                                note = note.ifBlank { null }, spentAt = now,
+                                createdAt = now, updatedAt = now
+                            ))
+                            // Post to the books: Dr expense account, Cr cash
+                            val accounting = AccountingRepo(db)
+                            accounting.ensureSeeded()
+                            val expenseAccount = CATEGORIES.first { it.first == category }.second
+                            val cashAccount = when (paidFrom) {
+                                "PETTY" -> AccountingRepo.PETTY
+                                "BANK" -> AccountingRepo.BANK
+                                else -> AccountingRepo.CASH
+                            }
+                            accounting.recordPayment(
+                                cashAccount, expenseAccount, amt,
+                                "Expense — ${category.lowercase()}${if (note.isNotBlank()) " ($note)" else ""}")
+                        }
+                        onSaved("Saved: ${category.lowercase()} UGX %,d".format(amt.toLong()))
+                    } catch (e: Exception) {
+                        error = "Not saved: ${e.message}"
                     }
-                    accounting.recordPayment(
-                        cashAccount, expenseAccount, amt,
-                        "Expense — ${category.lowercase()}${if (note.isNotBlank()) " ($note)" else ""}")
-                    onSaved("Saved: ${category.lowercase()} UGX %,d".format(amt.toLong()))
                 }
             }) { Text("Save") }
         },
