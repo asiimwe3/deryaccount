@@ -202,3 +202,9 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
 - PosScreen used weight(0f) for small carts — Compose forbids zero weights
   (IllegalArgumentException) and the whole Sell screen crashed the moment a
   cart existed with <= 3 items. Weight is now applied only when needed.
+
+## v0.8.6 — Sell screen product list now fully expanded
+- Removed the "View more products" pagination gate (was capped at 6, +6 per tap).
+  The product grid/list now shows every item for the selected category at once,
+  scrolling freely inside the fixed-size cart+checkout layout — matches the
+  full-list mockup design exactly.

@@ -67,7 +67,6 @@ fun PosScreen(
     var selectedCategory by remember { mutableStateOf("All") }
     var gridMode by remember { mutableStateOf(true) }
     var categoryMenuOpen by remember { mutableStateOf(false) }
-    var visibleCount by remember { mutableStateOf(6) }
 
     // Lightweight, best-effort connectivity display — the app itself never depends on it
     var online by remember { mutableStateOf(false) }
@@ -299,8 +298,8 @@ fun PosScreen(
         }
         Spacer(Modifier.height(4.dp))
 
-        // ---- Product tiles: tap the star to favourite, use the stepper + cart button to sell ----
-        val showList = filtered.take(visibleCount)
+        // ---- Product tiles: full list, freely scrollable — no "view more" gate.
+        // The list itself expands to fill all remaining screen space.
         if (gridMode) {
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
@@ -308,15 +307,10 @@ fun PosScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(showList, key = { it.id }) { p ->
+                items(filtered, key = { it.id }) { p ->
                     ProductCard(p,
                         onAdd = { qty -> viewModel.addProductQty(p, qty); scanInput = "" },
                         onToggleFav = { viewModel.toggleFavourite(p.id, !p.isFavourite) })
-                }
-                if (filtered.size > visibleCount) item(span = { GridItemSpan(2) }) {
-                    TextButton(onClick = { visibleCount += 6 }, modifier = Modifier.fillMaxWidth()) {
-                        Text("View more products (${filtered.size - visibleCount} more)")
-                    }
                 }
             }
         } else {
@@ -324,15 +318,10 @@ fun PosScreen(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                lazyListItems(showList, key = { it.id }) { p ->
+                lazyListItems(filtered, key = { it.id }) { p ->
                     ProductTile(p,
                         onTap = { viewModel.addProduct(p); scanInput = "" },
                         onToggleFav = { viewModel.toggleFavourite(p.id, !p.isFavourite) })
-                }
-                if (filtered.size > visibleCount) item {
-                    TextButton(onClick = { visibleCount += 6 }, modifier = Modifier.fillMaxWidth()) {
-                        Text("View more products (${filtered.size - visibleCount} more)")
-                    }
                 }
             }
         }
