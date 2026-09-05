@@ -488,30 +488,48 @@ private fun IncomeStatementTab(accounting: AccountingRepo, context: android.cont
             Spacer(Modifier.height(8.dp))
         }
         stmt?.let { s ->
-            if (s.income.isEmpty() && s.expenses.isEmpty()) {
+            if (s.revenue.isEmpty() && s.operatingExpenses.isEmpty() && s.cogs == 0.0) {
                 item {
                     Text("No entries yet. Post entries in the Cash Book first.",
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 return@LazyColumn
             }
-            item { Text("INCOME", fontWeight = FontWeight.Bold, fontSize = 13.sp,
+            item { Text("REVENUE", fontWeight = FontWeight.Bold, fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.primary) }
-            items(s.income.size) { i ->
-                StatementRow(s.income[i].first, s.income[i].second, false)
+            items(s.revenue.size) { i ->
+                StatementRow(
+                    if (s.revenue[i].second < 0) "Less: ${s.revenue[i].first}" else s.revenue[i].first,
+                    s.revenue[i].second, false)
             }
             item {
-                Text("Total Income: ${fmt(s.totalIncome)}", fontWeight = FontWeight.Bold,
+                Text("NET SALES: ${fmt(s.netSales)}", fontWeight = FontWeight.Bold,
                     fontSize = 14.sp, modifier = Modifier.padding(vertical = 4.dp))
-                Spacer(Modifier.height(8.dp))
-                Text("EXPENSES", fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                Spacer(Modifier.height(6.dp))
+                Text("Less: Cost of Sales", fontWeight = FontWeight.Bold, fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.error)
+                StatementRow("Cost of Sales", s.cogs, true)
+                Text("GROSS PROFIT: ${fmt(s.grossProfit)}", fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp, color = Color(0xFF2E7D32),
+                    modifier = Modifier.padding(vertical = 6.dp))
+                Divider()
+                Spacer(Modifier.height(6.dp))
             }
-            items(s.expenses.size) { i ->
-                StatementRow(s.expenses[i].first, s.expenses[i].second, true)
+            if (s.otherIncome.isNotEmpty()) {
+                item { Text("OTHER INCOME (unrealized)", fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.primary) }
+                items(s.otherIncome.size) { i ->
+                    StatementRow(s.otherIncome[i].first, s.otherIncome[i].second, false)
+                }
+                item { Spacer(Modifier.height(6.dp)) }
+            }
+            item { Text("OPERATING EXPENSES", fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.error) }
+            items(s.operatingExpenses.size) { i ->
+                StatementRow(s.operatingExpenses[i].first, s.operatingExpenses[i].second, true)
             }
             item {
-                Text("Total Expenses: ${fmt(s.totalExpenses)}", fontWeight = FontWeight.Bold,
+                Text("Total Operating Expenses: ${fmt(s.totalOperatingExpenses)}", fontWeight = FontWeight.Bold,
                     fontSize = 14.sp, modifier = Modifier.padding(vertical = 4.dp))
                 Divider()
                 Text(
@@ -522,12 +540,17 @@ private fun IncomeStatementTab(accounting: AccountingRepo, context: android.cont
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
                 OutlinedButton(onClick = {
-                    val body = s.income.map { listOf("Income", it.first, fmt(it.second)) } +
-                        s.expenses.map { listOf("Expense", it.first, fmt(it.second)) }
+                    val body = s.revenue.map { listOf("Revenue", it.first, fmt(it.second)) } +
+                        listOf(listOf("", "Net Sales", fmt(s.netSales)),
+                               listOf("", "Cost of Sales", fmt(-s.cogs)),
+                               listOf("", "GROSS PROFIT", fmt(s.grossProfit))) +
+                        s.otherIncome.map { listOf("Other Income", it.first, fmt(it.second)) } +
+                        s.operatingExpenses.map { listOf("Expense", it.first, fmt(it.second)) }
                     val file = PdfExport.bookPdf(context, "Income Statement", "DeryAccount",
                         listOf("TYPE  ACCOUNT  AMOUNT"), body,
-                        listOf("Total Income ${fmt(s.totalIncome)}",
-                               "Total Expenses ${fmt(s.totalExpenses)}",
+                        listOf("Net Sales ${fmt(s.netSales)}",
+                               "Gross Profit ${fmt(s.grossProfit)}",
+                               "Total Operating Expenses ${fmt(s.totalOperatingExpenses)}",
                                if (s.netProfit >= 0) "NET PROFIT ${fmt(s.netProfit)}"
                                else "NET LOSS ${fmt(-s.netProfit)}"))
                     try { PdfExport.printPdf(context, file, "Income Statement") } catch (_: Exception) {}

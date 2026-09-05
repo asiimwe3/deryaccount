@@ -199,6 +199,24 @@ class AccountingRepo(private val db: AppDatabase) {
     }
 
     /**
+     * Physical stock count variance — NEVER touches cash:
+     *  - stock found (count up): Dr Stock, Cr Stock Revaluation Gain
+     *  - stock missing (count down): Dr Sundry (shrinkage), Cr Stock
+     * Finding stock in a count is not a purchase; no money left the business.
+     */
+    suspend fun postCountAdjustment(deltaQty: Double, cost: Double, note: String) {
+        val deltaValue = deltaQty * cost
+        when {
+            deltaQty > 0 && deltaValue > 0 ->
+                post(particulars = "Stock found in count ($note)", source = "STOCK",
+                    debits = listOf(STOCK to deltaValue), credits = listOf(REVAL to deltaValue))
+            deltaQty < 0 && deltaValue < 0 ->
+                post(particulars = "Stock shrinkage in count ($note)", source = "STOCK",
+                    debits = listOf(SUNDAY_RUN to -deltaValue), credits = listOf(STOCK to -deltaValue))
+        }
+    }
+
+    /**
      * Stock purchase / opening stock: Dr Stock, Cr Cash (or Creditors if unpaid).
      * Keeps the Trial Balance complete as the owner adds stock.
      */
@@ -230,27 +248,41 @@ class AccountingRepo(private val db: AppDatabase) {
 
     suspend fun trialBalance(from: String, to: String) = db.journalDao().trialBalance(from, to)
 
-    /** Income statement: income & expense accounts for the period. */
+    /**
+     * Income statement, in the format bookkeepers expect:
+     *   Net Sales = Sales − Sales Returns
+     *   Gross Profit = Net Sales − Cost of Sales
+     *   Net Profit = Gross Profit + Other Income − Operating Expenses
+     * Cost of Sales is kept OUT of operating expenses; revaluation gains are
+     * unrealized, so they appear after gross profit as Other Income.
+     */
     data class IncomeStatement(
-        val income: List<Pair<String, Double>>,   // name -> amount
-        val expenses: List<Pair<String, Double>>,
-        val totalIncome: Double,
-        val totalExpenses: Double
+        val revenue: List<Pair<String, Double>>,      // sales + returns (returns negative)
+        val cogs: Double,
+        val otherIncome: List<Pair<String, Double>>,  // unrealized gains (revaluation)
+        val operatingExpenses: List<Pair<String, Double>>
     ) {
-        val netProfit: Double get() = totalIncome - totalExpenses
+        val netSales: Double get() = revenue.sumOf { it.second }
+        val grossProfit: Double get() = netSales - cogs
+        val otherIncomeTotal: Double get() = otherIncome.sumOf { it.second }
+        val totalOperatingExpenses: Double get() = operatingExpenses.sumOf { it.second }
+        val netProfit: Double get() = grossProfit + otherIncomeTotal - totalOperatingExpenses
     }
 
     suspend fun incomeStatement(from: String, to: String): IncomeStatement {
         val tb = trialBalance(from, to)
         // income accounts have credit balances (netBalance negative) → flip sign
-        val income = tb.filter { it.type == "INCOME" && it.netBalance != 0.0 }
-            .map { it.name to -it.netBalance }
-        val expenses = tb.filter { it.type == "EXPENSE" && it.netBalance != 0.0 }
-            .map { it.name to it.netBalance }
-        return IncomeStatement(
-            income, expenses,
-            income.sumOf { it.second }, expenses.sumOf { it.second }
-        )
+        val revenue = tb.filter {
+            (it.accountId == SALES || it.accountId == RETURNS) && it.netBalance != 0.0
+        }.map { it.name to -it.netBalance }
+        val cogs = tb.filter { it.accountId == COGS }.sumOf { it.netBalance }
+        val otherIncome = tb.filter {
+            it.type == "INCOME" && it.accountId != SALES && it.accountId != RETURNS && it.netBalance != 0.0
+        }.map { it.name to -it.netBalance }
+        val operatingExpenses = tb.filter {
+            it.type == "EXPENSE" && it.accountId != COGS && it.netBalance != 0.0
+        }.map { it.name to it.netBalance }
+        return IncomeStatement(revenue, cogs, otherIncome, operatingExpenses)
     }
 
     /**

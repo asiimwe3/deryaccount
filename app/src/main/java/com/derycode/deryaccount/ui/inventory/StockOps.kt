@@ -155,7 +155,8 @@ object StockOps {
                 note.ifBlank { "stock count" } + " (was ${fmt(p.stockQty)})")
             val accounting = AccountingRepo(db)
             accounting.ensureSeeded()
-            accounting.postStockEdit(p.stockQty, p.costPrice, countedQty, p.costPrice, p.name)
+            // Count variance must never touch cash — finding stock is not a purchase
+            accounting.postCountAdjustment(delta, p.costPrice, p.name)
         }
     }
 

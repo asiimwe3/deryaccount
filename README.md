@@ -249,3 +249,16 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   Tailoring & Fashion, School Canteen / Tuck Shop, Transport & Boda Services.
 - **DB migration to v6** (products.subcategory + products.imagePath) —
   shop data survives the update.
+
+## v0.11.1 — income statement correctness
+- Income statement now uses the standard format: Net Sales (Sales − Returns)
+  → less Cost of Sales → GROSS PROFIT → Other Income (unrealized) → Operating
+  Expenses → NET PROFIT. Previously COGS was buried inside "Total Expenses"
+  and Sales Returns appeared as a negative line under INCOME.
+- Stock Revaluation Gain (from cost-price edits) no longer mixes into
+  revenue — it is shown after gross profit as unrealized Other Income.
+- Fixed a real books bug: a physical stock count that FOUND stock posted
+  "Dr Stock, Cr Cash" — a phantom cash payment draining the Cash Book.
+  Count variances now post to Revaluation Gain (found) / Sundry shrinkage
+  (missing) and never touch cash.
+- PDF export of the income statement matches the new structure.
