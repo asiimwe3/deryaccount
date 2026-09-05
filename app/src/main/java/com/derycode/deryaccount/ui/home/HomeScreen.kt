@@ -54,6 +54,8 @@ fun HomeScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     var stats by remember { mutableStateOf(HomeStats()) }
     var loading by remember { mutableStateOf(true) }
+    var reorderList by remember { mutableStateOf(emptyList<com.derycode.deryaccount.data.local.entity.Product>()) }
+    var reorderCount by remember { mutableStateOf(0) }
 
     LaunchedEffect(branchId) {
         accounting.ensureSeeded()
@@ -77,6 +79,9 @@ fun HomeScreen(
         } catch (_: Exception) { 0.0 }
 
         stats = HomeStats(cash, sales, stockVal, expenses)
+        val reorder = try { db.productDao().observeReorder().first() } catch (_: Exception) { emptyList() }
+        reorderList = reorder.take(3)
+        reorderCount = reorder.size
         loading = false
 
         // Book integrity self-check: debits must equal credits, the Stock
@@ -113,6 +118,25 @@ fun HomeScreen(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StatCard(Modifier.weight(1f), "Total Stock Value", stats.stockValue, DaAmber, Icons.Default.Inventory2, loading)
             StatCard(Modifier.weight(1f), "Today's Expenses", stats.todayExpenses, DaRed, Icons.Default.Receipt, loading)
+        }
+
+        // ---- Stock alerts: reorder watchlist ----
+        if (reorderCount > 0) {
+            Spacer(Modifier.height(12.dp))
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(
+                containerColor = DaRed.copy(alpha = 0.12f))) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, null, tint = DaRed, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Reorder stock", fontWeight = FontWeight.Bold, color = DaTextPrimary, fontSize = 13.sp)
+                        Text("$reorderCount product(s) at or below the reorder level" +
+                            (if (reorderList.isNotEmpty()) ": " + reorderList.joinToString(", ") { it.name } else ""),
+                            fontSize = 11.sp, color = DaTextMuted, maxLines = 2)
+                    }
+                    TextButton(onClick = { onNavigate("inventory") }) { Text("Open", color = DaRed) }
+                }
+            }
         }
 
         Spacer(Modifier.height(18.dp))

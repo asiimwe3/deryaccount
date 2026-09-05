@@ -7,6 +7,7 @@ package com.derycode.deryaccount.ui.inventory
  * via DbSafety (storage checks + error logging to DeryAccount/crashes).
  */
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -40,6 +41,9 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
     var search by remember { mutableStateOf("") }
     var editProduct by remember { mutableStateOf<Product?>(null) }
     var deleteProduct by remember { mutableStateOf<Product?>(null) }
+    var detailProduct by remember { mutableStateOf<Product?>(null) }
+    var showCount by remember { mutableStateOf(false) }
+    var filter by remember { mutableStateOf("ALL") }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
@@ -52,8 +56,16 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
         )
     }
 
-    val filtered = if (search.isBlank()) products else products.filter {
+    val searched = if (search.isBlank()) products else products.filter {
         it.name.contains(search, ignoreCase = true) || (it.barcode?.contains(search) == true)
+    }
+    val in30 = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+        .format(java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_MONTH, 30) }.time)
+    val filtered = when (filter) {
+        "LOW" -> searched.filter { it.stockQty <= it.lowStockAlert && it.stockQty > 0 }
+        "OUT" -> searched.filter { it.stockQty <= 0 }
+        "EXPIRING" -> searched.filter { it.expiryDate != null && it.expiryDate!! <= in30 }
+        else -> searched
     }
 
     Scaffold(
@@ -72,6 +84,21 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
                 leadingIcon = { Icon(Icons.Default.Search, null) }
             )
             Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(
+                    "ALL" to ("All (${searched.size})"),
+                    "LOW" to ("Low (${searched.count { it.stockQty <= it.lowStockAlert && it.stockQty > 0 }})"),
+                    "OUT" to ("Out (${searched.count { it.stockQty <= 0 }})"),
+                    "EXPIRING" to ("Expiring (${searched.count { it.expiryDate != null && it.expiryDate!! <= in30 }})")
+                ).forEach { (key, label) ->
+                    FilterChip(
+                        selected = filter == key,
+                        onClick = { filter = key },
+                        label = { Text(label, fontSize = 11.sp, maxLines = 1) }
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically) {
                 Column {
@@ -83,14 +110,22 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
                     Text("Closing stock value (cost): UGX %,d".format(stockValue.toLong()),
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold)
+                    Text("at retail: UGX %,d".format(products.sumOf { it.stockQty * it.retailPrice }.toLong()),
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                Column(horizontalAlignment = Alignment.End) {
                 OutlinedButton(onClick = {
                     val file = PdfExport.stockPdf(context, "My Shop",
                         filtered.map { arrayOf(it.name, it.unit ?: "pcs",
                             it.retailPrice.toString(), it.stockQty.toString()) })
                     try { PdfExport.printPdf(context, file, "Stock Report") } catch (_: Exception) {}
                 }) {
-                    Icon(Icons.Default.Print, null); Text(" Print Stock")
+                    Icon(Icons.Default.Print, null); Text(" Print")
+                }
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(onClick = { showCount = true }) {
+                    Icon(Icons.Default.FactCheck, null); Text(" Stock Count")
+                }
                 }
             }
             Spacer(Modifier.height(4.dp))
@@ -98,6 +133,7 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
             LazyColumn {
                 items(filtered, key = { it.id }) { p ->
                     ProductRow(p,
+                        onOpen = { detailProduct = p },
                         onAdjust = { delta ->
                             val now = nowIso()
                             scope.launch {
@@ -170,18 +206,109 @@ fun InventoryScreen(db: AppDatabase, branchId: String) {
         onManualAdd = { showAdd = false; manualAdd = true }
     )
     if (manualAdd) AddProductDialog(db, branchId, onDone = { manualAdd = false })
+    detailProduct?.let { p ->
+        // re-read on each open so stock levels shown are fresh
+        val fresh by produceState<Product?>(initialValue = p, p.id) {
+            value = try { db.productDao().get(p.id) ?: p } catch (_: Exception) { p }
+        }
+        fresh?.let { ProductDetailSheet(db, branchId, it,
+            onDismiss = { detailProduct = null },
+            onEdit = { editProduct = it; detailProduct = null }) }
+    }
+    if (showCount) BulkCountDialog(db, branchId, products,
+        onDone = { showCount = false },
+        onError = { error = it; showCount = false })
+}
+
+/** Physical stock count over the whole list — enter counted quantities, apply the variances. */
+@Composable
+private fun BulkCountDialog(db: AppDatabase, branchId: String, products: List<Product>,
+                            onDone: () -> Unit, onError: (String) -> Unit) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val counted = remember { androidx.compose.runtime.mutableStateMapOf<String, String>() }
+    var busy by remember { mutableStateOf(false) }
+
+    Dialog(onDismissRequest = onDone,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize()) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Stock Count", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                Text("Enter the physically counted quantity for each product. " +
+                    "Blank or unchanged rows are skipped.", fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                LazyColumn(Modifier.weight(1f)) {
+                    items(products, key = { it.id }) { p ->
+                        val v = counted[p.id] ?: ""
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(p.name, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text("book: ${if (p.stockQty % 1.0 == 0.0) p.stockQty.toLong() else p.stockQty} ${p.unit}",
+                                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            OutlinedTextField(
+                                value = v,
+                                onValueChange = { counted[p.id] = it },
+                                label = { Text("counted") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                modifier = Modifier.width(120.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onDone, enabled = !busy) { Text("Cancel") }
+                    Spacer(Modifier.weight(1f))
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                busy = true
+                                try {
+                                    products.forEach { p ->
+                                        val c = counted[p.id]?.replace(",", "")?.toDoubleOrNull()
+                                        if (c != null && c != p.stockQty) {
+                                            StockOps.applyCount(db, branchId, p.id, c, "bulk stock count")
+                                            applied++
+                                        }
+                                    }
+                                    onDone()
+                                } catch (e: Exception) {
+                                    com.derycode.deryaccount.util.DbSafety.log(
+                                        androidx.compose.ui.platform.LocalContext.current, "Stock count", e)
+                                    onError(com.derycode.deryaccount.util.DbSafety.friendly(e))
+                                }
+                            }
+                        },
+                        enabled = !busy
+                    ) { Text(if (busy) "Applying…" else "Apply count") }
+                }
+            }
+        }
+    }
 }
 
 /** Edit + delete any product — full control over the information. */
 @Composable
-private fun ProductRow(p: Product, onAdjust: (Double) -> Unit,
+private fun ProductRow(p: Product, onOpen: () -> Unit, onAdjust: (Double) -> Unit,
                       onEdit: () -> Unit, onDelete: () -> Unit) {
     val low = p.stockQty <= p.lowStockAlert
     ListItem(
         headlineContent = { Text(p.name, fontWeight = FontWeight.SemiBold) },
         supportingContent = {
-            Text("${p.category} · ${p.barcode ?: "no barcode"} · cost %,d".format(p.costPrice.toLong()),
-                fontSize = 12.sp)
+            Column {
+                Text("${p.category} · ${p.barcode ?: "no barcode"} · cost %,d".format(p.costPrice.toLong()),
+                    fontSize = 12.sp)
+                if (p.expiryDate != null) {
+                    val expired = p.expiryDate!! < nowYmd()
+                    Text("expiry ${p.expiryDate}" + if (expired) " — EXPIRED" else "",
+                        fontSize = 11.sp,
+                        color = if (expired) MaterialTheme.colorScheme.error
+                                else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         },
         leadingContent = { Icon(Icons.Default.Inventory2, null) },
         trailingContent = {
@@ -203,7 +330,7 @@ private fun ProductRow(p: Product, onAdjust: (Double) -> Unit,
                 }
             }
         },
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)
     )
 }
 
@@ -227,6 +354,8 @@ private fun EditProductDialog(db: AppDatabase, p: Product, onDone: () -> Unit) {
     var stock by remember { mutableStateOf(
         if (p.stockQty % 1.0 == 0.0) p.stockQty.toLong().toString() else p.stockQty.toString()) }
     var alert by remember { mutableStateOf(p.lowStockAlert.toLong().toString()) }
+    var reorder by remember { mutableStateOf(if (p.reorderLevel > 0) p.reorderLevel.toLong().toString() else "") }
+    var expiry by remember { mutableStateOf(p.expiryDate ?: "") }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     AlertDialog(
@@ -247,8 +376,15 @@ private fun EditProductDialog(db: AppDatabase, p: Product, onDone: () -> Unit) {
                     OutlinedTextField(stock, { stock = it }, label = { Text("Stock qty") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         singleLine = true, modifier = Modifier.weight(1f))
-                    OutlinedTextField(alert, { alert = it }, label = { Text("Low stock alert") },
+                    OutlinedTextField(alert, { alert = it }, label = { Text("Min level") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(reorder, { reorder = it }, label = { Text("Reorder level (0=off)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(expiry, { expiry = it }, label = { Text("Expiry date (YYYY-MM-DD)") },
                         singleLine = true, modifier = Modifier.weight(1f))
                 }
             }
@@ -259,6 +395,8 @@ private fun EditProductDialog(db: AppDatabase, p: Product, onDone: () -> Unit) {
                 val cs = cost.toDoubleOrNull() ?: pr
                 val q = stock.toDoubleOrNull() ?: return@Button
                 val al = alert.toDoubleOrNull() ?: 5.0
+                val rl = reorder.replace(",", "").trim().toDoubleOrNull() ?: 0.0
+                val exp = expiry.trim().takeIf { it.isNotBlank() && it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) }
                 scope.launch {
                   try {
                     val now = nowIso()
@@ -267,7 +405,8 @@ private fun EditProductDialog(db: AppDatabase, p: Product, onDone: () -> Unit) {
                         db.productDao().upsert(p.copy(
                             name = name.ifBlank { p.name },
                             retailPrice = pr, costPrice = cs, stockQty = q,
-                            lowStockAlert = al, updatedAt = now))
+                            lowStockAlert = al, reorderLevel = rl, expiryDate = exp,
+                            updatedAt = now))
                         if (delta != 0.0) {
                             db.stockMovementDao().upsert(
                                 com.derycode.deryaccount.data.local.entity.StockMovement(
@@ -374,6 +513,10 @@ private fun AddProductDialog(db: AppDatabase, branchId: String, onDone: () -> Un
         dismissButton = { TextButton(onClick = onDone) { Text("Cancel") } }
     )
 }
+
+/** Today as yyyy-MM-dd — API-24 safe (no java.time without desugaring). */
+private fun nowYmd(): String = java.text.SimpleDateFormat(
+    "yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
 
 private fun nowIso() = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US)
     .format(java.util.Date())

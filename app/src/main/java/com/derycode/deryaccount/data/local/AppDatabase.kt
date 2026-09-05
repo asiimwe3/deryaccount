@@ -23,7 +23,7 @@ import com.derycode.deryaccount.data.local.entity.*
         Account::class, JournalEntry::class, JournalLine::class,
         HeldSale::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -93,6 +93,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v4 → v5: products.reorderLevel — the reorder point for stock alerts. */
+        private val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE products ADD COLUMN reorderLevel REAL NOT NULL DEFAULT 0")
+            }
+        }
+
         @Volatile private var INSTANCE: AppDatabase? = null
 
         fun get(context: Context): AppDatabase =
@@ -105,7 +112,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // v2 -> v3: favourites column + held_sales table.
                     // MUST ship as a real migration — a destructive fallback here
                     // would WIPE every shop's books on update.
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     // Kept only as a last resort for pre-accounting installs (DB v1).
                     .fallbackToDestructiveMigration()
                     .build()

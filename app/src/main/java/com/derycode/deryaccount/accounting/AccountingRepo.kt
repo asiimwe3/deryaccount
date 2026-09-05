@@ -30,6 +30,7 @@ class AccountingRepo(private val db: AppDatabase) {
             Account("acc-drawings","3100","Drawings",       "EQUITY", sortOrder = 8),
             Account("acc-sales",  "4000", "Sales / Revenue","INCOME", sortOrder = 9),
             Account("acc-reval",   "4900", "Stock Revaluation Gain", "INCOME", sortOrder = 9),
+            Account("acc-returns","4150","Sales Returns",   "INCOME", sortOrder = 9),
             Account("acc-cogs",   "5000", "Cost of Sales",  "EXPENSE", sortOrder = 10),
             Account("acc-purchases","5100","Purchases",     "EXPENSE", sortOrder = 11),
             Account("acc-rent",   "5200", "Rent",           "EXPENSE", sortOrder = 12),
@@ -47,6 +48,7 @@ class AccountingRepo(private val db: AppDatabase) {
         val STOCK = "acc-stock"
         val CREDITORS = "acc-creditors"
         val REVAL = "acc-reval"
+        val RETURNS = "acc-returns"
         val COGS = "acc-cogs"
         val SUNDAY_RUN = "acc-sundry"
     }
@@ -200,6 +202,23 @@ class AccountingRepo(private val db: AppDatabase) {
      * Stock purchase / opening stock: Dr Stock, Cr Cash (or Creditors if unpaid).
      * Keeps the Trial Balance complete as the owner adds stock.
      */
+    /**
+     * Customer returned goods — reverses the sale in the books:
+     *   Dr Sales Returns, Cr Cash (refund) or Cr Debtors (reduce what they owe)
+     *   Dr Stock, Cr Cost of Sales (goods back on the shelf at cost)
+     */
+    suspend fun postSaleReturn(refundAmount: Double, costValue: Double,
+                               refundMethod: String, note: String) {
+        val refundAccount = if (refundMethod == "CREDIT") DEBTORS else CASH
+        post(particulars = "Sales return ($note)", source = "RETURN",
+            debits = listOf(RETURNS to refundAmount),
+            credits = listOf(refundAccount to refundAmount))
+        if (costValue > 0) {
+            post(particulars = "Stock returned ($note)", source = "RETURN",
+                debits = listOf(STOCK to costValue), credits = listOf(COGS to costValue))
+        }
+    }
+
     suspend fun postPurchase(amount: Double, paidHow: String, ref: String) {
         if (amount <= 0) return
         val creditAccount = if (paidHow == "CREDIT") CREDITORS else CASH

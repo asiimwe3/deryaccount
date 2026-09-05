@@ -33,6 +33,12 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE isDeleted = 0 AND stockQty <= lowStockAlert ORDER BY stockQty ASC")
     fun observeLowStock(): Flow<List<Product>>
 
+    /** Reorder watchlist: at/below reorder level (or the low-stock alert when no reorder level is set). */
+    @Query("""SELECT * FROM products WHERE isDeleted = 0 AND stockQty <=
+               CASE WHEN reorderLevel > 0 THEN reorderLevel ELSE lowStockAlert END
+               ORDER BY stockQty ASC""")
+    fun observeReorder(): Flow<List<Product>>
+
     @Query("SELECT * FROM products WHERE syncState = 'pending' AND isDeleted = 0")
     suspend fun pendingSync(): List<Product>
 
@@ -97,6 +103,29 @@ interface SaleItemDao {
     @Query("SELECT * FROM sale_items WHERE saleId IN (:saleIds)")
     suspend fun forSales(saleIds: List<String>): List<SaleItem>
 
+    /** Recent sales of one product, with receipt info (most recent first). */
+    @Query("""SELECT sale_items.*, sales.receiptNo AS receipt_no, sales.soldAt AS sold_at,
+                     sales.paymentMethod AS method
+              FROM sale_items JOIN sales ON sale_items.saleId = sales.id
+              WHERE sale_items.productId = :productId AND sales.isDeleted = 0
+              ORDER BY sales.soldAt DESC LIMIT 30""")
+    suspend fun salesForProduct(productId: String): List<SaleItemWithSale>
+
+    @Query("""SELECT COALESCE(SUM(sale_items.qty), 0) FROM sale_items
+              JOIN sales ON sale_items.saleId = sales.id
+              WHERE sale_items.productId = :productId AND sales.isDeleted = 0""")
+    suspend fun totalSoldFor(productId: String): Double
+
+    @Query("""SELECT COALESCE(SUM(sale_items.lineTotal), 0) FROM sale_items
+              JOIN sales ON sale_items.saleId = sales.id
+              WHERE sale_items.productId = :productId AND sales.isDeleted = 0""")
+    suspend fun revenueFor(productId: String): Double
+
+    @Query("""SELECT COALESCE(SUM(sale_items.qty * sale_items.costPrice), 0) FROM sale_items
+              JOIN sales ON sale_items.saleId = sales.id
+              WHERE sale_items.productId = :productId AND sales.isDeleted = 0""")
+    suspend fun cogsFor(productId: String): Double
+
     @Query("SELECT * FROM sale_items WHERE saleId = :saleId")
     suspend fun forSale(saleId: String): List<SaleItem>
 
@@ -159,10 +188,30 @@ interface ShiftDao {
     suspend fun upsertAll(shifts: List<Shift>)
 }
 
+/** A sale item joined with its sale — for the per-product sales & profit views. */
+data class SaleItemWithSale(
+    @androidx.room.Embedded val item: SaleItem,
+    val receipt_no: String,
+    val sold_at: String,
+    val method: String
+)
+
+/** A purchase item joined with its purchase — for the per-product purchase history. */
+data class PurchaseItemWithPurchase(
+    @androidx.room.Embedded val item: PurchaseItem,
+    val received_at: String,
+    val paid_amount: Double
+)
+
 @Dao
 interface StockMovementDao {
     @Query("SELECT * FROM stock_movements WHERE syncState = 'pending'")
     suspend fun pendingSync(): List<StockMovement>
+
+    /** Full movement history for one product (receive, sell, return, damage, count…). */
+    @Query("""SELECT * FROM stock_movements WHERE isDeleted = 0 AND productId = :productId
+              ORDER BY movedAt DESC LIMIT 100""")
+    fun observeForProduct(productId: String): Flow<List<StockMovement>>
 
     @Upsert
     suspend fun upsert(movement: StockMovement)
@@ -208,6 +257,17 @@ interface PurchaseDao {
 interface PurchaseItemDao {
     @Query("SELECT * FROM purchase_items WHERE purchaseId = :purchaseId")
     suspend fun forPurchase(purchaseId: String): List<PurchaseItem>
+
+    /** Purchase history for one product (most recent first). */
+    @Query("""SELECT purchase_items.*, purchases.receivedAt AS received_at,
+                     purchases.paidAmount AS paid_amount
+              FROM purchase_items JOIN purchases ON purchase_items.purchaseId = purchases.id
+              WHERE purchase_items.productId = :productId
+              ORDER BY purchases.receivedAt DESC LIMIT 30""")
+    suspend fun purchasesForProduct(productId: String): List<PurchaseItemWithPurchase>
+
+    @Query("SELECT COALESCE(SUM(qty), 0) FROM purchase_items WHERE productId = :productId")
+    suspend fun totalReceivedFor(productId: String): Double
 
     @Upsert
     suspend fun upsertAll(items: List<PurchaseItem>)

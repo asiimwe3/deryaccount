@@ -61,7 +61,8 @@ data class Product(
     val wholesaleMinQty: Int = 0,  // minimum qty for wholesale price
     val taxRate: Double = 0.0,     // VAT % (0 for most UG shop items)
     val stockQty: Double,          // current stock at branch
-    val lowStockAlert: Double = 5.0,
+    val lowStockAlert: Double = 5.0,   // minimum stock level
+    val reorderLevel: Double = 0.0,    // reorder point; 0 = use low-stock alert as the trigger
     val expiryDate: String?,       // for perishables
     val branchId: String,
     override val createdAt: String,
@@ -128,7 +129,8 @@ data class StockMovement(
     @PrimaryKey val id: String,
     val productId: String,
     val branchId: String,
-    val type: String,               // SALE | PURCHASE | TRANSFER_OUT | TRANSFER_IN | ADJUSTMENT | WASTE
+    val type: String,               // OPENING | PURCHASE | SALE | RETURN | TRANSFER_OUT | TRANSFER_IN
+                                    // | ADJUSTMENT | DAMAGE | EXPIRY | COUNT
     val qty: Double,                // signed: negative out, positive in
     val reference: String?,         // sale id / purchase id / transfer id
     val note: String?,

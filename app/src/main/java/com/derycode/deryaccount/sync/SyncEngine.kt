@@ -156,6 +156,7 @@ class SyncEngine(private val context: Context, private val db: AppDatabase) {
         .put("retail_price", retailPrice).put("wholesale_price", wholesalePrice ?: JSONObject.NULL)
         .put("wholesale_min_qty", wholesaleMinQty).put("tax_rate", taxRate)
         .put("stock_qty", stockQty).put("low_stock_alert", lowStockAlert)
+        .put("reorder_level", reorderLevel)
         .put("expiry_date", expiryDate ?: JSONObject.NULL).put("branch_id", branchId)
         .put("created_at", createdAt).put("updated_at", updatedAt)
 
