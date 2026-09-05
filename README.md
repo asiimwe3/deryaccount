@@ -208,3 +208,44 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   The product grid/list now shows every item for the selected category at once,
   scrolling freely inside the fixed-size cart+checkout layout — matches the
   full-list mockup design exactly.
+
+## v0.9.1 — permanent signing key + uninstall-safe backups
+- Permanent APK signing key: existing installs can now update in place over
+  earlier versions (no more uninstall/reinstall losing data)
+- Backups moved to the visible DeryAccount folder, so they survive an
+  uninstall — Settings → Backup/Restore works across reinstalls
+
+## v0.10.0 — subscriptions & licensing
+- 4 plans in UGX/month: Starter 10,000 / Business 20,000 (Most Popular) /
+  Professional 35,000 / Multi-Branch 60,000
+- Founding offer: pay yearly at 10× monthly (Save 17%)
+- 21-day full-featured free trial (floors to Starter after expiry — books
+  are never locked)
+- Activation codes are HMAC-signed (DERY-XXXX-…, scheme in billing/License.kt)
+  and verified fully offline
+- Subscription screen in the side drawer; support WhatsApp 0762 306 675
+
+## v0.11.0 — mobile-money subscriptions, profile, photos & sub-categories
+- **Pay with Mobile Money:** pick a plan + duration (1/3/6/12 months) →
+  PesaPal checkout page (MTN MoMo, Airtel Money, cards) → the app polls the
+  payment status → the activation code is issued automatically by the backend
+  and applied on return. An unfinished payment can be resumed from the
+  subscription screen.
+- **PesaPal backend** (DeryCode Business Suite app, separate): order creation,
+  IPN webhook, status polling, and automatic activation-code generation using
+  the same HMAC scheme as License.kt.
+- **My Profile screen:** owner name, phone and email — the saved phone
+  pre-fills the PesaPal payer details.
+- **Product photos:** pick from gallery or camera when adding/editing a
+  product; images are downscaled (≤800px, JPEG) and stored privately in app
+  storage. Photos appear on the POS tiles and stock rows.
+- **Product sub-categories:** a sub-category field on every product, filter
+  chips on the Stock screen and on the Sell screen (below the category
+  chips), and Quick Stock Setup now groups catalog items under
+  sub-category headers.
+- **Catalog doubled:** 20 business categories, 1,240 items — every item
+  sub-categorized. 8 new categories: Fruits & Vegetables, Poultry & Eggs,
+  Fish Business, Bakery & Confectionery, Wholesale & Distribution,
+  Tailoring & Fashion, School Canteen / Tuck Shop, Transport & Boda Services.
+- **DB migration to v6** (products.subcategory + products.imagePath) —
+  shop data survives the update.
