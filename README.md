@@ -262,3 +262,14 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   Count variances now post to Revaluation Gain (found) / Sundry shrinkage
   (missing) and never touch cash.
 - PDF export of the income statement matches the new structure.
+
+## v0.11.2 — new Sell screen layout
+- Phones: the entire screen is now the product grid. The cart is a tappable
+  summary bar pinned at the bottom ("3 items in cart • UGX 45,000 — VIEW
+  CART") that opens a full-screen cart sheet: every cart line with +/-/remove,
+  subtotal, discount, TOTAL, the three payment buttons and quick actions.
+  Adding many items no longer squeezes the product list.
+- Landscape / tablets (≥700dp width): a true two-pane POS — products on the
+  left, a live ticket (cart + totals + pay) always visible on the right.
+- Multi-item selling is now first-class: full cart list is always scrollable
+  (no "+N more items…" cap), steppers on every line.

@@ -67,6 +67,7 @@ fun PosScreen(
     var showHeldSheet by remember { mutableStateOf(false) }
     var showCustomerPicker by remember { mutableStateOf(false) }
     var discountInput by remember { mutableStateOf("") }
+    var showCartSheet by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf("All") }
     var gridMode by remember { mutableStateOf(true) }
     var categoryMenuOpen by remember { mutableStateOf(false) }
@@ -200,57 +201,6 @@ fun PosScreen(
         )
         Spacer(Modifier.height(6.dp))
 
-        // ---- Cart (when items present) ----
-        if (ui.cart.isNotEmpty()) {
-            Surface(
-                // weight(0f) is illegal in Compose — apply the weight only when
-                // the cart is big enough to need scrolling space.
-                Modifier.fillMaxWidth().then(
-                    if (ui.cart.size > 3) Modifier.weight(1f) else Modifier
-                ),
-                tonalElevation = 2.dp, shape = MaterialTheme.shapes.medium
-            ) {
-                Column(Modifier.padding(6.dp)) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically) {
-                        Text("Cart (${ui.cart.size} items)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        TextButton(onClick = { viewModel.clearCart(); discountInput = "" }) {
-                            Icon(Icons.Default.DeleteOutline, null, modifier = Modifier.size(16.dp), tint = DaRed)
-                            Spacer(Modifier.width(2.dp))
-                            Text("Clear Cart", color = DaRed, fontSize = 12.sp)
-                        }
-                    }
-                    if (ui.customerName != null) {
-                        Text("Customer: ${ui.customerName}", fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    ui.cart.take(6).forEach { line ->
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(line.product.name, Modifier.weight(1f),
-                                fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                            // big +/- steppers, no typing needed
-                            FilledTonalIconButton(onClick = { viewModel.setQty(line.product.id, line.qty - 1) }) {
-                                Icon(Icons.Default.Remove, null)
-                            }
-                            Text(" ${fmtQty(line.qty)} ", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            FilledTonalIconButton(onClick = { viewModel.setQty(line.product.id, line.qty + 1) }) {
-                                Icon(Icons.Default.Add, null)
-                            }
-                            Text(fmtMoney(line.lineTotal), fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            IconButton(onClick = { viewModel.removeLine(line.product.id) }, modifier = Modifier.size(32.dp)) {
-                                Icon(Icons.Default.Close, null, tint = MaterialTheme.colorScheme.error)
-                            }
-                        }
-                    }
-                    if (ui.cart.size > 6) Text("+${ui.cart.size - 6} more items…", fontSize = 12.sp)
-                }
-            }
-            Spacer(Modifier.height(6.dp))
-        }
-
         // ---- Category filter chips (derived from the real catalog) ----
         val allCategories = remember(catalog) { catalog.map { it.category }.distinct().sorted() }
         val shownChips = allCategories.take(4)
@@ -330,149 +280,79 @@ fun PosScreen(
         }
         Spacer(Modifier.height(4.dp))
 
-        // ---- Product tiles: full list, freely scrollable — no "view more" gate.
-        // The list itself expands to fill all remaining screen space.
-        if (gridMode) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(filtered, key = { it.id }) { p ->
-                    ProductCard(p,
-                        onAdd = { qty -> viewModel.addProductQty(p, qty); scanInput = "" },
-                        onToggleFav = { viewModel.toggleFavourite(p.id, !p.isFavourite) })
+        // ---- Product area — adapts to the screen ----
+        // Phones: the whole screen is the product grid; the cart is a tappable
+        // summary bar that opens a full-screen cart sheet, so adding many
+        // items never squeezes the products.
+        // Landscape / tablets (>=700dp): a true two-pane POS — products left,
+        // live ticket (cart + totals + pay) always visible on the right.
+        BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+            val wide = maxWidth >= 700.dp
+            val addFromGrid: (Product, Double) -> Unit = { p, qty ->
+                viewModel.addProductQty(p, qty); scanInput = ""
+            }
+            val toggleFav: (Product) -> Unit = { p ->
+                viewModel.toggleFavourite(p.id, !p.isFavourite)
+            }
+            val listTap: (Product) -> Unit = { p ->
+                viewModel.addProduct(p); scanInput = ""
+            }
+            val discountChange: (String) -> Unit = { raw ->
+                discountInput = raw.filter { it.isDigit() }
+                discountInput.toDoubleOrNull()?.let { viewModel.setDiscount(it) }
+            }
+            val doReceipt: () -> Unit = {
+                if (ui.lastReceipt != null) viewModel.printReceipt()
+                else scope.launch {
+                    android.widget.Toast.makeText(context, "Complete a sale first", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
-        } else {
-            androidx.compose.foundation.lazy.LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                lazyListItems(filtered, key = { it.id }) { p ->
-                    ProductTile(p,
-                        onTap = { viewModel.addProduct(p); scanInput = "" },
-                        onToggleFav = { viewModel.toggleFavourite(p.id, !p.isFavourite) })
-                }
-            }
-        }
-
-        // ---- Checkout card: Subtotal/Discount/Tax/TOTAL, then payment + quick actions ----
-        Surface(Modifier.fillMaxWidth(), tonalElevation = 4.dp,
-            shape = MaterialTheme.shapes.medium) {
-            Column(Modifier.padding(10.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Subtotal", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(fmtMoney(ui.subtotal), fontSize = 13.sp)
-                }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Discount", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f))
-                    OutlinedTextField(
-                        value = discountInput,
-                        onValueChange = { raw ->
-                            discountInput = raw.filter { it.isDigit() }
-                            discountInput.toDoubleOrNull()?.let { viewModel.setDiscount(it) }
-                        },
-                        modifier = Modifier.width(120.dp).height(48.dp),
-                        placeholder = { Text("0") },
-                        singleLine = true,
-                        prefix = { Text("UGX", fontSize = 11.sp) },
-                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp)
+            if (wide) {
+                Row(Modifier.fillMaxSize()) {
+                    ProductArea(filtered, gridMode, addFromGrid, toggleFav, listTap,
+                        Modifier.weight(1.55f))
+                    Spacer(Modifier.width(8.dp))
+                    CartPanel(
+                        ui = ui, discountInput = discountInput,
+                        onDiscountChange = discountChange,
+                        onClearCart = { viewModel.clearCart(); discountInput = "" },
+                        onSetQty = viewModel::setQty, onRemoveLine = viewModel::removeLine,
+                        onCash = { if (ui.total > 0) viewModel.checkout("CASH", ui.total) },
+                        onMoMo = { viewModel.pendingMethod = "MTN_MOMO" },
+                        onCredit = { if (ui.total > 0) showCreditPicker = true },
+                        onHold = { if (ui.cart.isNotEmpty()) showHoldDialog = true },
+                        onCustomer = { showCustomerPicker = true },
+                        onReceipt = doReceipt,
+                        modifier = Modifier.weight(1f)
                     )
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Tax (0%)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("UGX 0", fontSize = 13.sp)
-                }
-                Divider(Modifier.padding(vertical = 6.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("TOTAL", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-                    Text(fmtMoney(ui.total), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = DaGreen)
-                }
-                Spacer(Modifier.height(8.dp))
-
-                // ---- Payment methods: three equal, big, colour-coded buttons ----
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { if (ui.total > 0) viewModel.checkout("CASH", ui.total) },
-                        colors = ButtonDefaults.buttonColors(containerColor = DaGreen, contentColor = Color(0xFF03150A)),
-                        modifier = Modifier.weight(1f).height(58.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Payments, null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp)); Text("CASH", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Text("Pay with cash", fontSize = 9.sp)
-                        }
-                    }
-                    Button(
-                        onClick = { viewModel.pendingMethod = "MTN_MOMO" },
-                        colors = ButtonDefaults.buttonColors(containerColor = DaAmber, contentColor = Color(0xFF241800)),
-                        modifier = Modifier.weight(1f).height(58.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Smartphone, null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp)); Text("MOBILE MONEY", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Text("MTN / Airtel", fontSize = 9.sp)
-                        }
-                    }
-                    Button(
-                        onClick = { if (ui.total > 0) showCreditPicker = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = DaBlue, contentColor = Color.White),
-                        modifier = Modifier.weight(1f).height(58.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.CreditCard, null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp)); Text("CREDIT", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                            }
-                            Text("Card / Credit sale", fontSize = 9.sp)
-                        }
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    ProductArea(filtered, gridMode, addFromGrid, toggleFav, listTap,
+                        Modifier.weight(1f))
+                    if (ui.cart.isNotEmpty()) {
+                        CartSummaryBar(ui.cart.size, ui.total, onOpen = { showCartSheet = true })
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-
-                // ---- Quick actions: Hold Sale, Customer, Receipt ----
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        onClick = { if (ui.cart.isNotEmpty()) showHoldDialog = true },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Outlined.PauseCircle, null, modifier = Modifier.size(18.dp))
-                            Text("Hold Sale", fontSize = 11.sp)
-                            Text("Save for later", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    TextButton(
-                        onClick = { showCustomerPicker = true },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp))
-                            Text("Customer", fontSize = 11.sp)
-                            Text(ui.customerName ?: "Select customer", fontSize = 9.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                        }
-                    }
-                    TextButton(
-                        onClick = {
-                            if (ui.lastReceipt != null) viewModel.printReceipt()
-                            else scope.launch {
-                                android.widget.Toast.makeText(context, "Complete a sale first", android.widget.Toast.LENGTH_SHORT).show()
+                if (showCartSheet) {
+                    androidx.compose.ui.window.Dialog(onDismissRequest = { showCartSheet = false }) {
+                        Surface(Modifier.fillMaxSize()) {
+                            Column(Modifier.fillMaxSize().padding(10.dp)) {
+                                CartPanel(
+                                    ui = ui, discountInput = discountInput,
+                                    onDiscountChange = discountChange,
+                                    onClearCart = { viewModel.clearCart(); discountInput = "" },
+                                    onSetQty = viewModel::setQty, onRemoveLine = viewModel::removeLine,
+                                    onCash = { if (ui.total > 0) viewModel.checkout("CASH", ui.total) },
+                                    onMoMo = { viewModel.pendingMethod = "MTN_MOMO" },
+                                    onCredit = { if (ui.total > 0) showCreditPicker = true },
+                                    onHold = { if (ui.cart.isNotEmpty()) showHoldDialog = true },
+                                    onCustomer = { showCustomerPicker = true },
+                                    onReceipt = doReceipt,
+                                    onClose = { showCartSheet = false },
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Receipt, null, modifier = Modifier.size(18.dp))
-                            Text("Receipt", fontSize = 11.sp)
-                            Text("Print / Preview", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -559,6 +439,274 @@ fun PosScreen(
             },
             onDone = { viewModel.clearReceipt(); onSaleComplete(receipt.sale.receiptNo) }
         )
+    }
+}
+
+// ----------------------------------------------------------------
+// v0.11.2 — Sell screen layout
+// ----------------------------------------------------------------
+
+/** The scrollable product grid/list, shared by both layout modes. */
+@Composable
+private fun ProductArea(
+    filtered: List<Product>,
+    gridMode: Boolean,
+    onAdd: (Product, Double) -> Unit,
+    onToggleFav: (Product) -> Unit,
+    onListTap: (Product) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (gridMode) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = modifier,
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+        ) {
+            items(filtered, key = { it.id }) { p ->
+                ProductCard(p,
+                    onAdd = { qty -> onAdd(p, qty) },
+                    onToggleFav = { onToggleFav(p) })
+            }
+        }
+    } else {
+        androidx.compose.foundation.lazy.LazyColumn(
+            modifier = modifier,
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)
+        ) {
+            lazyListItems(filtered, key = { it.id }) { p ->
+                ProductTile(p,
+                    onTap = { onListTap(p) },
+                    onToggleFav = { onToggleFav(p) })
+            }
+        }
+    }
+}
+
+/**
+ * The ticket: cart lines + totals + payment + quick actions.
+ * Right pane in the wide two-pane layout; full-screen sheet on phones.
+ */
+@Composable
+private fun CartPanel(
+    ui: PosViewModel.UiState,
+    discountInput: String,
+    onDiscountChange: (String) -> Unit,
+    onClearCart: () -> Unit,
+    onSetQty: (String, Double) -> Unit,
+    onRemoveLine: (String) -> Unit,
+    onCash: () -> Unit,
+    onMoMo: () -> Unit,
+    onCredit: () -> Unit,
+    onHold: () -> Unit,
+    onCustomer: () -> Unit,
+    onReceipt: () -> Unit,
+    modifier: Modifier = Modifier,
+    onClose: (() -> Unit)? = null
+) {
+    Surface(modifier, tonalElevation = 4.dp, shape = MaterialTheme.shapes.medium) {
+        Column(Modifier.fillMaxSize().padding(10.dp)) {
+            // ---- Header: items count, clear, optional close ----
+            Row(Modifier.fillMaxWidth(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically) {
+                Text("CART (${ui.cart.size} item${if (ui.cart.size == 1) "" else "s"})",
+                    fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onClearCart) {
+                        Icon(Icons.Default.DeleteOutline, null,
+                            modifier = Modifier.size(16.dp), tint = DaRed)
+                        Spacer(Modifier.width(2.dp))
+                        Text("Clear", color = DaRed, fontSize = 12.sp)
+                    }
+                    if (onClose != null) {
+                        IconButton(onClick = onClose, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Close, "Close cart")
+                        }
+                    }
+                }
+            }
+            ui.customerName?.let {
+                Text("Customer: $it", fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(4.dp))
+
+            // ---- All cart lines, freely scrollable ----
+            if (ui.cart.isEmpty()) {
+                Box(Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center) {
+                    Text("Cart is empty — tap products to add them",
+                        fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    Modifier.weight(1f),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(2.dp)
+                ) {
+                    lazyListItems(ui.cart, key = { it.product.id }) { line ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(line.product.name, Modifier.weight(1f),
+                                fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                            FilledTonalIconButton(onClick = { onSetQty(line.product.id, line.qty - 1) }) {
+                                Icon(Icons.Default.Remove, null)
+                            }
+                            Text(" ${fmtQty(line.qty)} ", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            FilledTonalIconButton(onClick = { onSetQty(line.product.id, line.qty + 1) }) {
+                                Icon(Icons.Default.Add, null)
+                            }
+                            Text(fmtMoney(line.lineTotal), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            IconButton(onClick = { onRemoveLine(line.product.id) },
+                                modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Default.Close, null, tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+
+            // ---- Totals ----
+            Row(Modifier.fillMaxWidth(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
+                Text("Subtotal", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(fmtMoney(ui.subtotal), fontSize = 13.sp)
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Discount", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f))
+                OutlinedTextField(
+                    value = discountInput,
+                    onValueChange = onDiscountChange,
+                    modifier = Modifier.width(120.dp).height(48.dp),
+                    placeholder = { Text("0") },
+                    singleLine = true,
+                    prefix = { Text("UGX", fontSize = 11.sp) },
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp)
+                )
+            }
+            Row(Modifier.fillMaxWidth(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
+                Text("Tax (0%)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("UGX 0", fontSize = 13.sp)
+            }
+            Divider(Modifier.padding(vertical = 6.dp))
+            Row(Modifier.fillMaxWidth(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
+                Text("TOTAL", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                Text(fmtMoney(ui.total), fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = DaGreen)
+            }
+            Spacer(Modifier.height(8.dp))
+
+            // ---- Payment: three equal, colour-coded buttons ----
+            Row(Modifier.fillMaxWidth(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onCash,
+                    colors = ButtonDefaults.buttonColors(containerColor = DaGreen, contentColor = Color(0xFF03150A)),
+                    modifier = Modifier.weight(1f).height(58.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Payments, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp)); Text("CASH", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text("Pay with cash", fontSize = 9.sp)
+                    }
+                }
+                Button(
+                    onClick = onMoMo,
+                    colors = ButtonDefaults.buttonColors(containerColor = DaAmber, contentColor = Color(0xFF241800)),
+                    modifier = Modifier.weight(1f).height(58.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Smartphone, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp)); Text("MOBILE MONEY", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text("MTN / Airtel", fontSize = 9.sp)
+                    }
+                }
+                Button(
+                    onClick = onCredit,
+                    colors = ButtonDefaults.buttonColors(containerColor = DaBlue, contentColor = Color.White),
+                    modifier = Modifier.weight(1f).height(58.dp)
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CreditCard, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp)); Text("CREDIT", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Text("Card / Credit sale", fontSize = 9.sp)
+                    }
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+
+            // ---- Quick actions: Hold Sale, Customer, Receipt ----
+            Row(Modifier.fillMaxWidth(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onHold, modifier = Modifier.weight(1f)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Outlined.PauseCircle, null, modifier = Modifier.size(18.dp))
+                        Text("Hold Sale", fontSize = 11.sp)
+                    }
+                }
+                TextButton(onClick = onCustomer, modifier = Modifier.weight(1f)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Person, null, modifier = Modifier.size(18.dp))
+                        Text("Customer", fontSize = 11.sp)
+                        Text(ui.customerName ?: "Select customer", fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    }
+                }
+                TextButton(onClick = onReceipt, modifier = Modifier.weight(1f)) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Receipt, null, modifier = Modifier.size(18.dp))
+                        Text("Receipt", fontSize = 11.sp)
+                        Text("Print / Preview", fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Phones: pinned summary bar above the grid — tap to open the cart sheet. */
+@Composable
+private fun CartSummaryBar(itemCount: Int, total: Double, onOpen: () -> Unit) {
+    Spacer(Modifier.height(8.dp))
+    Surface(
+        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            Modifier.fillMaxWidth()
+                .clickable(onClick = onOpen)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("$itemCount item${if (itemCount == 1) "" else "s"} in cart",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(fmtMoney(total), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = DaGreen)
+            }
+            Button(
+                onClick = onOpen,
+                colors = ButtonDefaults.buttonColors(containerColor = DaGreen, contentColor = Color(0xFF03150A)),
+                modifier = Modifier.height(46.dp)
+            ) {
+                Icon(Icons.Default.ShoppingCart, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("VIEW CART", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
 
