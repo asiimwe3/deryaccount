@@ -30,6 +30,7 @@ fun MoreScreen(
     syncEngine: SyncEngine,
     session: SessionManager,
     context: Context,
+    userRole: String = "OWNER",
     onNavigate: (String) -> Unit = {},
     onLogout: () -> Unit
 ) {
@@ -92,6 +93,83 @@ fun MoreScreen(
             }
         }
         Spacer(Modifier.height(16.dp))
+
+        val isCashier = userRole == "CASHIER"
+        val isOwner = userRole == "OWNER" || userRole == "MANAGER" || userRole == "ACCOUNTANT"
+        if (!isCashier) {
+            Text("Business Tools", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            val moneyTools = listOf(
+                "custpayments" to "Customer Payments", "suppayments" to "Supplier Payments",
+                "purchreturns" to "Purchase Returns", "purchorders" to "Purchase Orders")
+            moneyTools.chunked(2).forEach { rowTools ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rowTools.forEach { (route, label) ->
+                        OutlinedButton(onClick = { onNavigate(route) },
+                            modifier = Modifier.weight(1f).height(48.dp)) {
+                            Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (rowTools.size == 1) Spacer(Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+            val analyticsTools = listOf(
+                "salescharts" to "Sales Charts", "bestsellers" to "Best Sellers",
+                "deadstock" to "Dead Stock", "valuation" to "Stock Valuation",
+                "profitproduct" to "Profit / Product", "profitcategory" to "Profit / Category",
+                "custaging" to "Customer Aging", "supaging" to "Supplier Aging",
+                "branchcompare" to "Branch Compare")
+            analyticsTools.chunked(3).forEach { rowTools ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    rowTools.forEach { (route, label) ->
+                        OutlinedButton(onClick = { onNavigate(route) },
+                            modifier = Modifier.weight(1f).height(44.dp)) {
+                            Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (rowTools.size < 3) Spacer(Modifier.weight(3 - rowTools.size))
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+            val accountingTools = listOf(
+                "journal" to "Journal", "vat" to "VAT Report", "bankrec" to "Bank Rec.",
+                "assets" to "Fixed Assets", "budgets" to "Budgets", "payroll" to "Payroll")
+            accountingTools.chunked(3).forEach { rowTools ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    rowTools.forEach { (route, label) ->
+                        OutlinedButton(onClick = { onNavigate(route) },
+                            modifier = Modifier.weight(1f).height(44.dp)) {
+                            Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (rowTools.size < 3) Spacer(Modifier.weight(3 - rowTools.size))
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+            val dataTools = listOf(
+                "csvimport" to "Import CSV", "csvexport" to "Export CSV",
+                "batches" to "Batches", "serials" to "Serials", "syncstatus" to "Sync Status")
+            dataTools.chunked(3).forEach { rowTools ->
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    rowTools.forEach { (route, label) ->
+                        OutlinedButton(onClick = { onNavigate(route) },
+                            modifier = Modifier.weight(1f).height(44.dp)) {
+                            Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (rowTools.size < 3) Spacer(Modifier.weight(3 - rowTools.size))
+                }
+                Spacer(Modifier.height(6.dp))
+            }
+            if (userRole == "OWNER" || userRole == "MANAGER") {
+                OutlinedButton(onClick = { onNavigate("permissions") },
+                    modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                    Text("Users & Permissions", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+        }
 
         Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(12.dp))

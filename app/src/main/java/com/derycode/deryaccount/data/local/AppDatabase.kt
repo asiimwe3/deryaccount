@@ -21,9 +21,15 @@ import com.derycode.deryaccount.data.local.entity.*
         Purchase::class, PurchaseItem::class, Expense::class, CashMovement::class,
         Shift::class, StockTransfer::class,
         Account::class, JournalEntry::class, JournalLine::class,
-        HeldSale::class
+        HeldSale::class,
+        CustomerPayment::class, SupplierPayment::class,
+        PurchaseReturn::class, PurchaseReturnItem::class,
+        PurchaseOrder::class, PurchaseOrderItem::class,
+        FixedAsset::class, Employee::class, Payslip::class,
+        Budget::class, BankLine::class,
+        Batch::class, SerialNumber::class
     ],
-    version = 6,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -45,6 +51,20 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun accountDao(): AccountDao
     abstract fun journalDao(): JournalDao
     abstract fun heldSaleDao(): HeldSaleDao
+    abstract fun analyticsDao(): AnalyticsDao
+    abstract fun customerPaymentDao(): CustomerPaymentDao
+    abstract fun supplierPaymentDao(): SupplierPaymentDao
+    abstract fun purchaseReturnDao(): PurchaseReturnDao
+    abstract fun purchaseReturnItemDao(): PurchaseReturnItemDao
+    abstract fun purchaseOrderDao(): PurchaseOrderDao
+    abstract fun purchaseOrderItemDao(): PurchaseOrderItemDao
+    abstract fun fixedAssetDao(): FixedAssetDao
+    abstract fun employeeDao(): EmployeeDao
+    abstract fun payslipDao(): PayslipDao
+    abstract fun budgetDao(): BudgetDao
+    abstract fun bankLineDao(): BankLineDao
+    abstract fun batchDao(): BatchDao
+    abstract fun serialDao(): SerialDao
 
     companion object {
         /** v2 → v3: add products.isFavourite + held_sales (Hold Sale). */
@@ -108,6 +128,167 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** v6 → v7: money workflows — payments, purchase returns, purchase orders. */
+        private val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS customer_payments (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        customerId TEXT NOT NULL,
+                        branchId TEXT NOT NULL,
+                        userId TEXT NOT NULL,
+                        amount REAL NOT NULL,
+                        method TEXT NOT NULL,
+                        reference TEXT,
+                        note TEXT,
+                        paidAt TEXT NOT NULL,
+                        createdAt TEXT NOT NULL,
+                        updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL,
+                        isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS supplier_payments (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        supplierId TEXT NOT NULL,
+                        branchId TEXT NOT NULL,
+                        userId TEXT NOT NULL,
+                        amount REAL NOT NULL,
+                        method TEXT NOT NULL,
+                        reference TEXT,
+                        note TEXT,
+                        paidAt TEXT NOT NULL,
+                        createdAt TEXT NOT NULL,
+                        updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL,
+                        isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS purchase_returns (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        prNo TEXT NOT NULL,
+                        supplierId TEXT,
+                        branchId TEXT NOT NULL,
+                        userId TEXT NOT NULL,
+                        total REAL NOT NULL,
+                        refundMethod TEXT NOT NULL,
+                        note TEXT,
+                        returnedAt TEXT NOT NULL,
+                        createdAt TEXT NOT NULL,
+                        updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL,
+                        isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS purchase_return_items (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        purchaseReturnId TEXT NOT NULL,
+                        productId TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        qty REAL NOT NULL,
+                        unitCost REAL NOT NULL,
+                        lineTotal REAL NOT NULL
+                    )""")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS purchase_orders (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        poNo TEXT NOT NULL,
+                        supplierId TEXT,
+                        branchId TEXT NOT NULL,
+                        userId TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        expectedAt TEXT,
+                        note TEXT,
+                        orderedAt TEXT NOT NULL,
+                        createdAt TEXT NOT NULL,
+                        updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL,
+                        isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS purchase_order_items (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        orderId TEXT NOT NULL,
+                        productId TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        qty REAL NOT NULL,
+                        unitCost REAL NOT NULL,
+                        lineTotal REAL NOT NULL
+                    )""")
+            }
+        }
+
+                /** v7 → v8: accounting suite + tracking. */
+        private val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS fixed_assets (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL, category TEXT NOT NULL,
+                        cost REAL NOT NULL, salvage REAL NOT NULL,
+                        purchaseDate TEXT NOT NULL, lifeMonths INTEGER NOT NULL,
+                        accumulatedDepreciation REAL NOT NULL,
+                        soldAt TEXT,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS employees (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL, role TEXT NOT NULL, phone TEXT,
+                        monthlySalary REAL NOT NULL, isActive INTEGER NOT NULL,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS payslips (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        employeeId TEXT NOT NULL, employeeName TEXT NOT NULL,
+                        month TEXT NOT NULL, gross REAL NOT NULL,
+                        deductions REAL NOT NULL, net REAL NOT NULL,
+                        method TEXT NOT NULL, note TEXT, paidAt TEXT NOT NULL,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS budgets (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        month TEXT NOT NULL, kind TEXT NOT NULL,
+                        category TEXT NOT NULL, amount REAL NOT NULL,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS bank_lines (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        branchId TEXT NOT NULL, statementDate TEXT NOT NULL,
+                        description TEXT NOT NULL, direction TEXT NOT NULL,
+                        amount REAL NOT NULL, isMatched INTEGER NOT NULL,
+                        note TEXT,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS batches (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        productId TEXT NOT NULL, productName TEXT NOT NULL,
+                        batchNo TEXT NOT NULL, expiryDate TEXT,
+                        qty REAL NOT NULL, branchId TEXT NOT NULL, note TEXT,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS serials (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        productId TEXT NOT NULL, productName TEXT NOT NULL,
+                        serial TEXT NOT NULL, status TEXT NOT NULL,
+                        soldAt TEXT, branchId TEXT NOT NULL,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+            }
+        }
+
         @Volatile private var INSTANCE: AppDatabase? = null
 
         /**
@@ -141,7 +322,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // v2 -> v3: favourites column + held_sales table.
                     // MUST ship as a real migration — a destructive fallback here
                     // would WIPE every shop's books on update.
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     // Kept only as a last resort for pre-accounting installs (DB v1).
                     .fallbackToDestructiveMigration()
                     .build()

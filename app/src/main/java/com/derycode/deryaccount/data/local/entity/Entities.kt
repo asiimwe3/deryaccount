@@ -259,3 +259,221 @@ data class HeldSale(
     val note: String,                         // e.g. "blue jerrycan guy"
     val createdAt: String                    // ISO string, same style as Sale
 )
+
+// =====================================================================
+// v0.12.0 — money workflows & purchase operations
+// =====================================================================
+
+/** Money received from a customer against their debt (full payment workflow). */
+@Entity(tableName = "customer_payments")
+data class CustomerPayment(
+    @PrimaryKey val id: String,
+    val customerId: String,
+    val branchId: String,
+    val userId: String,
+    val amount: Double,
+    val method: String,               // CASH | MTN_MOMO | AIRTEL_MONEY
+    val reference: String?,          // receipt / phone-ref if any
+    val note: String?,
+    val paidAt: String,
+    override val createdAt: String,
+    override val updatedAt: String,
+    override val syncState: String = "pending",
+    override val isDeleted: Boolean = false
+) : Syncable
+
+/** Money paid to a supplier against what the business owes them. */
+@Entity(tableName = "supplier_payments")
+data class SupplierPayment(
+    @PrimaryKey val id: String,
+    val supplierId: String,
+    val branchId: String,
+    val userId: String,
+    val amount: Double,
+    val method: String,               // CASH | MTN_MOMO | AIRTEL_MONEY | BANK
+    val reference: String?,
+    val note: String?,
+    val paidAt: String,
+    override val createdAt: String,
+    override val updatedAt: String,
+    override val syncState: String = "pending",
+    override val isDeleted: Boolean = false
+) : Syncable
+
+/** Goods returned TO a supplier (faulty stock, over-supply...). */
+@Entity(tableName = "purchase_returns")
+data class PurchaseReturn(
+    @PrimaryKey val id: String,
+    val prNo: String,                 // PR-20260905-A3F1
+    val supplierId: String?,
+    val branchId: String,
+    val userId: String,
+    val total: Double,
+    val refundMethod: String,         // CASH (money back) | SUPPLIER_CREDIT (off our account)
+    val note: String?,
+    val returnedAt: String,
+    override val createdAt: String,
+    override val updatedAt: String,
+    override val syncState: String = "pending",
+    override val isDeleted: Boolean = false
+) : Syncable
+
+@Entity(tableName = "purchase_return_items")
+data class PurchaseReturnItem(
+    @PrimaryKey val id: String,
+    val purchaseReturnId: String,
+    val productId: String,
+    val name: String,                 // snapshot
+    val qty: Double,
+    val unitCost: Double,
+    val lineTotal: Double
+)
+
+/** Purchase order — stock we ordered but have NOT yet received. */
+@Entity(tableName = "purchase_orders")
+data class PurchaseOrder(
+    @PrimaryKey val id: String,
+    val poNo: String,                 // PO-20260905-B2C7
+    val supplierId: String?,
+    val branchId: String,
+    val userId: String,
+    val status: String = "OPEN",      // OPEN | RECEIVED | CANCELLED
+    val expectedAt: String?,          // when the supplier should deliver
+    val note: String?,
+    val orderedAt: String,
+    override val createdAt: String,
+    override val updatedAt: String,
+    override val syncState: String = "pending",
+    override val isDeleted: Boolean = false
+) : Syncable
+
+@Entity(tableName = "purchase_order_items")
+data class PurchaseOrderItem(
+    @PrimaryKey val id: String,
+    val orderId: String,
+    val productId: String,
+    val name: String,                 // snapshot
+    val qty: Double,
+    val unitCost: Double,
+    val lineTotal: Double
+)
+
+// =====================================================================
+// v0.12.0 — accounting suite: assets, payroll, budgets, bank rec, tracking
+// =====================================================================
+
+/** Fixed asset — depreciated straight-line over its useful life. */
+@Entity(tableName = "fixed_assets")
+data class FixedAsset(
+    @PrimaryKey val id: String,
+    val name: String,
+    val category: String,             // EQUIPMENT | FURNITURE | VEHICLE | BUILDING | OTHER
+    val cost: Double,
+    val salvage: Double = 0.0,
+    val purchaseDate: String,         // ISO date
+    val lifeMonths: Int,
+    val accumulatedDepreciation: Double = 0.0,
+    val soldAt: String? = null,
+    override val createdAt: String,
+    override val updatedAt: String,
+    override val syncState: String = "pending",
+    override val isDeleted: Boolean = false
+) : Syncable
+
+/** Staff member who gets paid (does not need an app login). */
+@Entity(tableName = "employees")
+data class Employee(
+    @PrimaryKey val id: String,
+    val name: String,
+    val role: String,                 // SHOP ASSISTANT | CASHIER | DRIVER | GUARD | OTHER
+    val phone: String? = null,
+    val monthlySalary: Double,
+    val isActive: Boolean = true,
+    override val createdAt: String,
+    override val updatedAt: String,
+    override val syncState: String = "pending",
+    override val isDeleted: Boolean = false
+) : Syncable
+
+/** One month's pay for one employee. */
+@Entity(tableName = "payslips")
+data class Payslip(
+    @PrimaryKey val id: String,
+    val employeeId: String,
+    val employeeName: String,          // snapshot
+    val month: String,                // "2026-09"
+    val gross: Double,
+    val deductions: Double,           // NSSF, PAYE, advances...
+    val net: Double,                  // what actually hits their hand
+    val method: String,               // CASH | MTN_MOMO | AIRTEL_MONEY | BANK
+    val note: String? = null,
+    val paidAt: String,
+    override val createdAt: String,
+    override val updatedAt: String,
+    override val syncState: String = "pending",
+    override val isDeleted: Boolean = false
+) : Syncable
+
+/** Monthly plan for a revenue or expense category. */
+@Entity(tableName = "budgets")
+data class Budget(
+    @PrimaryKey val id: String,
+    val month: String,                // "2026-09"
+    val kind: String,                 // REVENUE | EXPENSE
+    val category: String,             // e.g. REVENUE or RENT/SALARIES/TRANSPORT/UTILITIES/OTHER
+    val amount: Double,
+    override val createdAt: String,
+    override val updatedAt: String,
+    override val syncState: String = "pending",
+    override val isDeleted: Boolean = false
+) : Syncable
+
+/** One line from the bank / mobile-money statement, for reconciliation. */
+@Entity(tableName = "bank_lines")
+data class BankLine(
+    @PrimaryKey val id: String,
+    val branchId: String,
+    val statementDate: String,        // ISO date
+    val description: String,
+    val direction: String,            // IN | OUT
+    val amount: Double,
+    val isMatched: Boolean = false,
+    val note: String? = null,
+    override val createdAt: String,
+    override val updatedAt: String,
+    override val syncState: String = "pending",
+    override val isDeleted: Boolean = false
+) : Syncable
+
+/** Batch / lot of a product (with optional expiry). */
+@Entity(tableName = "batches")
+data class Batch(
+    @PrimaryKey val id: String,
+    val productId: String,
+    val productName: String,          // snapshot
+    val batchNo: String,
+    val expiryDate: String? = null,   // "2026-10-31" or null = no expiry
+    val qty: Double,
+    val branchId: String,
+    val note: String? = null,
+    override val createdAt: String,
+    override val updatedAt: String,
+    override val syncState: String = "pending",
+    override val isDeleted: Boolean = false
+) : Syncable
+
+/** Serial number of a tracked item (phones, electronics...). */
+@Entity(tableName = "serials")
+data class SerialNumber(
+    @PrimaryKey val id: String,
+    val productId: String,
+    val productName: String,          // snapshot
+    val serial: String,
+    val status: String = "IN_STOCK",  // IN_STOCK | SOLD
+    val soldAt: String? = null,
+    val branchId: String,
+    override val createdAt: String,
+    override val updatedAt: String,
+    override val syncState: String = "pending",
+    override val isDeleted: Boolean = false
+) : Syncable

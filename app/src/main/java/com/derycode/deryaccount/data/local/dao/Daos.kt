@@ -96,6 +96,11 @@ interface SaleDao {
               WHERE isDeleted = 0 AND branchId = :branchId AND paymentMethod = :method
               AND soldAt BETWEEN :from AND :to""")
     suspend fun totalByMethodBetween(branchId: String, method: String, from: String, to: String): Double
+
+    /** All sales in a period (CSV export). */
+    @Query("""SELECT * FROM sales WHERE isDeleted = 0 AND branchId = :branchId
+              AND soldAt BETWEEN :from AND :to ORDER BY soldAt DESC""")
+    suspend fun between(branchId: String, from: String, to: String): List<Sale>
 }
 
 @Dao
@@ -324,6 +329,9 @@ interface BranchDao {
 
 @Dao
 interface UserDao {
+    @Query("SELECT * FROM users WHERE isDeleted = 0 AND isActive = 1")
+    suspend fun allOnce(): List<User>
+
     @Query("SELECT * FROM users WHERE isActive = 1 AND isDeleted = 0 AND username = :username LIMIT 1")
     suspend fun byUsername(username: String): User?
 
@@ -437,6 +445,9 @@ interface JournalDao {
     @Query("SELECT * FROM journal_lines WHERE entryId = :entryId")
     suspend fun linesFor(entryId: String): List<JournalLine>
 
+    @Query("SELECT * FROM journal_entries WHERE entryDate BETWEEN :from AND :to ORDER BY entryDate DESC LIMIT 300")
+    suspend fun entriesBetween(from: String, to: String): List<JournalEntry>
+
     @Query("""
         SELECT a.id AS accountId, a.code AS code, a.name AS name, a.type AS type,
                COALESCE(SUM(jl.debit - jl.credit), 0) AS netBalance
@@ -504,4 +515,357 @@ interface HeldSaleDao {
 
     @Query("DELETE FROM held_sales WHERE id = :id")
     suspend fun delete(id: String)
+}
+
+// =====================================================================
+// v0.12.0 — analytics & money workflow DAOs
+// =====================================================================
+
+// ---- projection rows for the analytics screens ----
+data class ProductStat(
+    val id: String?, val name: String?,
+    val totalQty: Double = 0.0, val totalRevenue: Double = 0.0)
+data class ProductProfit(
+    val id: String?, val name: String?,
+    val totalRevenue: Double = 0.0, val totalCost: Double = 0.0, val totalProfit: Double = 0.0)
+data class CategoryProfit(
+    val name: String?,
+    val totalRevenue: Double = 0.0, val totalCost: Double = 0.0, val totalProfit: Double = 0.0)
+data class DayTotal(val day: String?, val total: Double = 0.0, val cnt: Int = 0)
+data class MonthTotal(val month: String?, val total: Double = 0.0, val cnt: Int = 0)
+data class BranchTotal(val branchId: String?, val total: Double = 0.0, val cnt: Int = 0)
+data class DeadStockRow(
+    val id: String?, val name: String?, val stockQty: Double = 0.0, val lastSold: String?)
+data class ValuationRow(
+    val category: String?, val costValue: Double = 0.0, val retailValue: Double = 0.0)
+data class OpenCreditSale(
+    val id: String, val receiptNo: String, val customerId: String?,
+    val soldAt: String, val remaining: Double)
+
+@Dao
+interface AnalyticsDao {
+    // Best sellers (by revenue) for a period
+    @Query("""SELECT sale_items.productId AS id, sale_items.name AS name,
+                     SUM(sale_items.qty) AS totalQty, SUM(sale_items.lineTotal) AS totalRevenue
+              FROM sale_items JOIN sales ON sale_items.saleId = sales.id
+              WHERE sales.isDeleted = 0
+                AND (:branchId = '' OR sales.branchId = :branchId)
+                AND sales.soldAt BETWEEN :from AND :to
+              GROUP BY sale_items.productId ORDER BY totalRevenue DESC LIMIT 100""")
+    suspend fun bestSellers(branchId: String, from: String, to: String): List<ProductStat>
+
+    // Profit by product (revenue − cost of goods sold, at the cost captured at sale time)
+    @Query("""SELECT sale_items.productId AS id, sale_items.name AS name,
+                     SUM(sale_items.lineTotal) AS totalRevenue,
+                     SUM(sale_items.qty * sale_items.costPrice) AS totalCost,
+                     SUM(sale_items.lineTotal - sale_items.qty * sale_items.costPrice) AS totalProfit
+              FROM sale_items JOIN sales ON sale_items.saleId = sales.id
+              WHERE sales.isDeleted = 0
+                AND (:branchId = '' OR sales.branchId = :branchId)
+                AND sales.soldAt BETWEEN :from AND :to
+              GROUP BY sale_items.productId ORDER BY totalProfit DESC LIMIT 200""")
+    suspend fun profitByProduct(branchId: String, from: String, to: String): List<ProductProfit>
+
+    // Profit by category
+    @Query("""SELECT products.category AS name,
+                     SUM(sale_items.lineTotal) AS totalRevenue,
+                     SUM(sale_items.qty * sale_items.costPrice) AS totalCost,
+                     SUM(sale_items.lineTotal - sale_items.qty * sale_items.costPrice) AS totalProfit
+              FROM sale_items
+              JOIN sales ON sale_items.saleId = sales.id
+              JOIN products ON sale_items.productId = products.id
+              WHERE sales.isDeleted = 0
+                AND (:branchId = '' OR sales.branchId = :branchId)
+                AND sales.soldAt BETWEEN :from AND :to
+              GROUP BY products.category ORDER BY totalProfit DESC""")
+    suspend fun profitByCategory(branchId: String, from: String, to: String): List<CategoryProfit>
+
+    // Dead / slow stock: in stock but not sold since the cutoff (or never sold)
+    @Query("""SELECT products.id AS id, products.name AS name, products.stockQty AS stockQty,
+                     MAX(sales.soldAt) AS lastSold
+              FROM products
+              LEFT JOIN sale_items ON sale_items.productId = products.id
+              LEFT JOIN sales ON sale_items.saleId = sales.id AND sales.isDeleted = 0
+              WHERE products.isDeleted = 0 AND products.branchId = :branchId
+                AND products.stockQty > 0
+              GROUP BY products.id
+              HAVING lastSold IS NULL OR lastSold < :cutoff
+              ORDER BY lastSold IS NULL DESC, lastSold ASC LIMIT 200""")
+    suspend fun deadStock(branchId: String, cutoff: String): List<DeadStockRow>
+
+    // Stock valuation by category
+    @Query("""SELECT category AS category,
+                     SUM(stockQty * costPrice) AS costValue,
+                     SUM(stockQty * retailPrice) AS retailValue
+              FROM products WHERE isDeleted = 0 AND branchId = :branchId
+              GROUP BY category ORDER BY costValue DESC""")
+    suspend fun valuationByCategory(branchId: String): List<ValuationRow>
+
+    // Daily totals for charts (last N days)
+    @Query("""SELECT substr(soldAt, 1, 10) AS day, SUM(total) AS total, COUNT(*) AS cnt
+              FROM sales WHERE isDeleted = 0
+                AND (:branchId = '' OR branchId = :branchId)
+                AND soldAt BETWEEN :from AND :to
+              GROUP BY day ORDER BY day""")
+    suspend fun dailyTotals(branchId: String, from: String, to: String): List<DayTotal>
+
+    // Monthly totals for charts
+    @Query("""SELECT substr(soldAt, 1, 7) AS month, SUM(total) AS total, COUNT(*) AS cnt
+              FROM sales WHERE isDeleted = 0
+                AND (:branchId = '' OR branchId = :branchId)
+                AND soldAt BETWEEN :from AND :to
+              GROUP BY month ORDER BY month""")
+    suspend fun monthlyTotals(branchId: String, from: String, to: String): List<MonthTotal>
+
+    // Branch comparison: sales
+    @Query("""SELECT branchId AS branchId, SUM(total) AS total, COUNT(*) AS cnt
+              FROM sales WHERE isDeleted = 0 AND soldAt BETWEEN :from AND :to
+              GROUP BY branchId""")
+    suspend fun salesByBranch(from: String, to: String): List<BranchTotal>
+
+    // Branch comparison: expenses
+    @Query("""SELECT branchId AS branchId, SUM(amount) AS total, COUNT(*) AS cnt
+              FROM expenses WHERE isDeleted = 0 AND spentAt BETWEEN :from AND :to
+              GROUP BY branchId""")
+    suspend fun expensesByBranch(from: String, to: String): List<BranchTotal>
+
+    // Customer aging: open credit invoices (never fully paid at sale time)
+    @Query("""SELECT id, receiptNo, customerId, soldAt, (total - amountPaid) AS remaining
+              FROM sales WHERE isDeleted = 0 AND paymentMethod = 'CREDIT'
+                AND total > amountPaid
+                AND (:branchId = '' OR branchId = :branchId)
+              ORDER BY soldAt ASC""")
+    suspend fun openCreditSales(branchId: String): List<OpenCreditSale>
+
+    // VAT: sales of products that carry a tax rate (VAT-inclusive pricing)
+    @Query("""SELECT sale_items.productId AS id, sale_items.name AS name,
+                     MAX(products.taxRate) AS rate, SUM(sale_items.lineTotal) AS revenue
+              FROM sale_items
+              JOIN sales ON sale_items.saleId = sales.id
+              JOIN products ON sale_items.productId = products.id
+              WHERE sales.isDeleted = 0 AND products.taxRate > 0
+                AND (:branchId = '' OR sales.branchId = :branchId)
+                AND sales.soldAt BETWEEN :from AND :to
+              GROUP BY sale_items.productId ORDER BY revenue DESC""")
+    suspend fun vatableSales(branchId: String, from: String, to: String): List<VatableRow>
+
+    // Expense totals per category in one month (for budgets vs actual)
+    @Query("""SELECT category AS category, SUM(amount) AS total
+              FROM expenses WHERE isDeleted = 0
+                AND (:branchId = '' OR branchId = :branchId)
+                AND spentAt BETWEEN :from AND :to
+              GROUP BY category""")
+    suspend fun expensesByCategory(branchId: String, from: String, to: String): List<ExpenseCategoryTotal>
+
+    // Supplier aging: open purchase invoices (paid less than total)
+    @Query("""SELECT id, supplierId, receivedAt, (total - paidAmount) AS remaining
+              FROM purchases WHERE isDeleted = 0 AND total > paidAmount
+                AND (:branchId = '' OR branchId = :branchId)
+              ORDER BY receivedAt ASC""")
+    suspend fun openPurchases(branchId: String): List<OpenPurchaseRow>
+}
+
+data class VatableRow(
+    val id: String?, val name: String?, val rate: Double = 0.0, val revenue: Double = 0.0)
+data class ExpenseCategoryTotal(
+    val category: String?, val total: Double = 0.0)
+data class OpenPurchaseRow(
+    val id: String, val supplierId: String?, val receivedAt: String, val remaining: Double)
+
+@Dao
+interface CustomerPaymentDao {
+    @Query("SELECT * FROM customer_payments WHERE isDeleted = 0 ORDER BY paidAt DESC LIMIT 200")
+    fun observeRecent(): Flow<List<CustomerPayment>>
+
+    @Query("SELECT * FROM customer_payments WHERE customerId = :customerId AND isDeleted = 0 ORDER BY paidAt DESC")
+    suspend fun forCustomer(customerId: String): List<CustomerPayment>
+
+    @Query("SELECT * FROM customer_payments WHERE syncState = 'pending'")
+    suspend fun pendingSync(): List<CustomerPayment>
+
+    @Upsert
+    suspend fun upsert(payment: CustomerPayment)
+
+    @Upsert
+    suspend fun upsertAll(payments: List<CustomerPayment>)
+}
+
+@Dao
+interface SupplierPaymentDao {
+    @Query("SELECT * FROM supplier_payments WHERE isDeleted = 0 ORDER BY paidAt DESC LIMIT 200")
+    fun observeRecent(): Flow<List<SupplierPayment>>
+
+    @Query("SELECT * FROM supplier_payments WHERE supplierId = :supplierId AND isDeleted = 0 ORDER BY paidAt DESC")
+    suspend fun forSupplier(supplierId: String): List<SupplierPayment>
+
+    @Query("SELECT * FROM supplier_payments WHERE syncState = 'pending'")
+    suspend fun pendingSync(): List<SupplierPayment>
+
+    @Upsert
+    suspend fun upsert(payment: SupplierPayment)
+
+    @Upsert
+    suspend fun upsertAll(payments: List<SupplierPayment>)
+}
+
+@Dao
+interface PurchaseReturnDao {
+    @Query("SELECT * FROM purchase_returns WHERE isDeleted = 0 ORDER BY returnedAt DESC LIMIT 100")
+    fun observeRecent(): Flow<List<PurchaseReturn>>
+
+    @Query("SELECT * FROM purchase_returns WHERE syncState = 'pending'")
+    suspend fun pendingSync(): List<PurchaseReturn>
+
+    @Query("SELECT * FROM purchase_returns WHERE id = :id")
+    suspend fun get(id: String): PurchaseReturn?
+
+    @Upsert
+    suspend fun upsert(ret: PurchaseReturn)
+
+    @Upsert
+    suspend fun upsertAll(rets: List<PurchaseReturn>)
+}
+
+@Dao
+interface PurchaseReturnItemDao {
+    @Query("SELECT * FROM purchase_return_items WHERE purchaseReturnId = :returnId")
+    suspend fun forReturn(returnId: String): List<PurchaseReturnItem>
+
+    @Upsert
+    suspend fun upsertAll(items: List<PurchaseReturnItem>)
+}
+
+@Dao
+interface PurchaseOrderDao {
+    @Query("SELECT * FROM purchase_orders WHERE isDeleted = 0 ORDER BY orderedAt DESC LIMIT 100")
+    fun observeRecent(): Flow<List<PurchaseOrder>>
+
+    @Query("SELECT * FROM purchase_orders WHERE syncState = 'pending'")
+    suspend fun pendingSync(): List<PurchaseOrder>
+
+    @Query("SELECT * FROM purchase_orders WHERE id = :id")
+    suspend fun get(id: String): PurchaseOrder?
+
+    @Upsert
+    suspend fun upsert(order: PurchaseOrder)
+
+    @Upsert
+    suspend fun upsertAll(orders: List<PurchaseOrder>)
+}
+
+@Dao
+interface PurchaseOrderItemDao {
+    @Query("SELECT * FROM purchase_order_items WHERE orderId = :orderId")
+    suspend fun forOrder(orderId: String): List<PurchaseOrderItem>
+
+    @Upsert
+    suspend fun upsertAll(items: List<PurchaseOrderItem>)
+}
+
+@Dao
+interface FixedAssetDao {
+    @Query("SELECT * FROM fixed_assets WHERE isDeleted = 0 AND soldAt IS NULL ORDER BY name")
+    suspend fun allOnce(): List<FixedAsset>
+
+    @Query("SELECT * FROM fixed_assets WHERE syncState = 'pending'")
+    suspend fun pendingSync(): List<FixedAsset>
+
+    @Query("SELECT * FROM fixed_assets WHERE id = :id")
+    suspend fun get(id: String): FixedAsset?
+
+    @Upsert
+    suspend fun upsert(asset: FixedAsset)
+
+    @Upsert
+    suspend fun upsertAll(assets: List<FixedAsset>)
+}
+
+@Dao
+interface EmployeeDao {
+    @Query("SELECT * FROM employees WHERE isDeleted = 0 AND isActive = 1 ORDER BY name")
+    suspend fun allOnce(): List<Employee>
+
+    @Query("SELECT * FROM employees WHERE syncState = 'pending'")
+    suspend fun pendingSync(): List<Employee>
+
+    @Upsert
+    suspend fun upsert(employee: Employee)
+
+    @Upsert
+    suspend fun upsertAll(employees: List<Employee>)
+}
+
+@Dao
+interface PayslipDao {
+    @Query("SELECT * FROM payslips WHERE isDeleted = 0 AND month = :month ORDER BY paidAt DESC")
+    suspend fun forMonth(month: String): List<Payslip>
+
+    @Query("SELECT * FROM payslips WHERE isDeleted = 0 ORDER BY paidAt DESC LIMIT 200")
+    fun observeRecent(): Flow<List<Payslip>>
+
+    @Query("SELECT * FROM payslips WHERE syncState = 'pending'")
+    suspend fun pendingSync(): List<Payslip>
+
+    @Upsert
+    suspend fun upsert(payslip: Payslip)
+}
+
+@Dao
+interface BudgetDao {
+    @Query("SELECT * FROM budgets WHERE isDeleted = 0 AND month = :month AND kind = :kind")
+    suspend fun forMonth(month: String, kind: String): List<Budget>
+
+    @Query("SELECT * FROM budgets WHERE isDeleted = 0 AND month = :month AND kind = :kind AND category = :category LIMIT 1")
+    suspend fun get(month: String, kind: String, category: String): Budget?
+
+    @Query("SELECT * FROM budgets WHERE syncState = 'pending'")
+    suspend fun pendingSync(): List<Budget>
+
+    @Upsert
+    suspend fun upsert(budget: Budget)
+}
+
+@Dao
+interface BankLineDao {
+    @Query("SELECT * FROM bank_lines WHERE isDeleted = 0 ORDER BY statementDate DESC LIMIT 300")
+    fun observeRecent(): Flow<List<BankLine>>
+
+    @Query("SELECT * FROM bank_lines WHERE syncState = 'pending'")
+    suspend fun pendingSync(): List<BankLine>
+
+    @Query("SELECT * FROM bank_lines WHERE id = :id")
+    suspend fun get(id: String): BankLine?
+
+    @Upsert
+    suspend fun upsert(line: BankLine)
+
+    @Upsert
+    suspend fun upsertAll(lines: List<BankLine>)
+}
+
+@Dao
+interface BatchDao {
+    @Query("SELECT * FROM batches WHERE isDeleted = 0 AND branchId = :branchId ORDER BY expiryDate IS NULL, expiryDate ASC")
+    fun observeForBranch(branchId: String): Flow<List<Batch>>
+
+    @Query("SELECT * FROM batches WHERE syncState = 'pending'")
+    suspend fun pendingSync(): List<Batch>
+
+    @Upsert
+    suspend fun upsert(batch: Batch)
+}
+
+@Dao
+interface SerialDao {
+    @Query("SELECT * FROM serials WHERE isDeleted = 0 AND branchId = :branchId ORDER BY createdAt DESC LIMIT 300")
+    fun observeForBranch(branchId: String): Flow<List<SerialNumber>>
+
+    @Query("SELECT * FROM serials WHERE syncState = 'pending'")
+    suspend fun pendingSync(): List<SerialNumber>
+
+    @Query("SELECT * FROM serials WHERE id = :id")
+    suspend fun get(id: String): SerialNumber?
+
+    @Upsert
+    suspend fun upsert(serial: SerialNumber)
 }

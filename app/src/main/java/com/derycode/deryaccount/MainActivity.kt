@@ -42,6 +42,31 @@ import com.derycode.deryaccount.ui.settings.MoreScreen
 import com.derycode.deryaccount.ui.profile.UserProfileScreen
 import com.derycode.deryaccount.ui.home.HomeScreen
 import com.derycode.deryaccount.ui.sales.SalesScreen
+import com.derycode.deryaccount.ui.analytics.BestSellersScreen
+import com.derycode.deryaccount.ui.analytics.DeadStockScreen
+import com.derycode.deryaccount.ui.analytics.StockValuationScreen
+import com.derycode.deryaccount.ui.analytics.BranchComparisonScreen
+import com.derycode.deryaccount.ui.analytics.ProfitByProductScreen
+import com.derycode.deryaccount.ui.analytics.ProfitByCategoryScreen
+import com.derycode.deryaccount.ui.analytics.SalesChartsScreen
+import com.derycode.deryaccount.ui.analytics.CustomerAgingScreen
+import com.derycode.deryaccount.ui.analytics.SupplierAgingScreen
+import com.derycode.deryaccount.ui.business.CustomerPaymentsScreen
+import com.derycode.deryaccount.ui.business.SupplierPaymentsScreen
+import com.derycode.deryaccount.ui.business.PurchaseReturnsScreen
+import com.derycode.deryaccount.ui.business.PurchaseOrdersScreen
+import com.derycode.deryaccount.ui.accounting.JournalScreen
+import com.derycode.deryaccount.ui.accounting.VatScreen
+import com.derycode.deryaccount.ui.accounting.BankReconciliationScreen
+import com.derycode.deryaccount.ui.accounting.FixedAssetsScreen
+import com.derycode.deryaccount.ui.accounting.BudgetsScreen
+import com.derycode.deryaccount.ui.accounting.PayrollScreen
+import com.derycode.deryaccount.ui.accounting.PermissionsScreen
+import com.derycode.deryaccount.ui.data.CsvImportScreen
+import com.derycode.deryaccount.ui.data.CsvExportScreen
+import com.derycode.deryaccount.ui.data.SyncStatusScreen
+import com.derycode.deryaccount.ui.inventory.BatchTrackingScreen
+import com.derycode.deryaccount.ui.inventory.SerialTrackingScreen
 import com.derycode.deryaccount.ui.theme.DeryAccountTheme
 import com.derycode.deryaccount.util.SessionManager
 import kotlinx.coroutines.flow.combine
@@ -157,15 +182,19 @@ fun DeryAccountApp() {
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scopeDrawer = rememberCoroutineScope()
-    val drawerItems = listOf(
-        Triple("pos", "Sell / POS", Icons.Default.PointOfSale),
-        Triple("inventory", "Stock", Icons.Default.Inventory2),
-        Triple("books", "Books of Account", Icons.AutoMirrored.Filled.MenuBook),
-        Triple("reports", "Reports", Icons.Default.BarChart),
-        Triple("subscription", "Subscription", Icons.Default.Verified),
-        Triple("profile", "My Profile", Icons.Default.Person),
-        Triple("more", "More", Icons.Default.Menu)
-    )
+    val isCashier = role == "CASHIER"
+    val drawerItems = buildList {
+        add(Triple("pos", "Sell / POS", Icons.Default.PointOfSale))
+        add(Triple("inventory", "Stock", Icons.Default.Inventory2))
+        if (!isCashier) {
+            add(Triple("books", "Books of Account", Icons.AutoMirrored.Filled.MenuBook))
+            add(Triple("reports", "Reports", Icons.Default.BarChart))
+            add(Triple("salescharts", "Analytics", Icons.Default.Timeline))
+            add(Triple("subscription", "Subscription", Icons.Default.Verified))
+        }
+        add(Triple("profile", "My Profile", Icons.Default.Person))
+        add(Triple("more", "More", Icons.Default.Menu))
+    }
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -248,12 +277,14 @@ fun DeryAccountApp() {
                     },
                     label = { Text("Sell") }
                 )
+                if (!isCashier) {
                 NavigationBarItem(
                     selected = currentRoute == "reports",
                     onClick = { navController.navigate("reports") { launchSingleTop = true } },
                     icon = { Icon(Icons.Default.BarChart, null) },
                     label = { Text("Reports") }
                 )
+                }
                 NavigationBarItem(
                     selected = currentRoute == "more",
                     onClick = { navController.navigate("more") { launchSingleTop = true } },
@@ -311,7 +342,7 @@ fun DeryAccountApp() {
             }
 
             composable("more") {
-                MoreScreen(db, syncEngine, session, context,
+                MoreScreen(db, syncEngine, session, context, role,
                     onNavigate = { route -> navController.navigate(route) { launchSingleTop = true } }) {
                     sessionState = null
                     scope.launch { session.logout() }
@@ -325,6 +356,39 @@ fun DeryAccountApp() {
             composable("profile") {
                 UserProfileScreen(session)
             }
+
+            // ---- v0.12.0 analytics ----
+            composable("bestsellers") { BestSellersScreen(db, branchId) }
+            composable("deadstock") { DeadStockScreen(db, branchId) }
+            composable("valuation") { StockValuationScreen(db, branchId) }
+            composable("branchcompare") { BranchComparisonScreen(db) }
+            composable("profitproduct") { ProfitByProductScreen(db, branchId) }
+            composable("profitcategory") { ProfitByCategoryScreen(db, branchId) }
+            composable("salescharts") { SalesChartsScreen(db, branchId) }
+            composable("custaging") { CustomerAgingScreen(db, branchId) }
+            composable("supaging") { SupplierAgingScreen(db, branchId) }
+
+            // ---- v0.12.0 money workflows ----
+            composable("custpayments") { CustomerPaymentsScreen(db, branchId, userId) }
+            composable("suppayments") { SupplierPaymentsScreen(db, branchId, userId) }
+            composable("purchreturns") { PurchaseReturnsScreen(db, branchId, userId) }
+            composable("purchorders") { PurchaseOrdersScreen(db, branchId, userId) }
+
+            // ---- v0.12.0 accounting suite ----
+            composable("journal") { JournalScreen(db) }
+            composable("vat") { VatScreen(db, branchId) }
+            composable("bankrec") { BankReconciliationScreen(db) }
+            composable("assets") { FixedAssetsScreen(db) }
+            composable("budgets") { BudgetsScreen(db, branchId) }
+            composable("payroll") { PayrollScreen(db) }
+            composable("permissions") { PermissionsScreen(db) }
+
+            // ---- v0.12.0 data & tracking ----
+            composable("csvimport") { CsvImportScreen(db, branchId) }
+            composable("csvexport") { CsvExportScreen(db, branchId) }
+            composable("syncstatus") { SyncStatusScreen(db, syncEngine) { } }
+            composable("batches") { BatchTrackingScreen(db, branchId) }
+            composable("serials") { SerialTrackingScreen(db, branchId) }
         }
     }
     } // drawer
@@ -344,5 +408,30 @@ private fun appTitle(route: String?): String = when (route) {
     "profile" -> "My Profile"
     "shift" -> "Shift"
     "more" -> "More"
+    "bestsellers" -> "Best Sellers"
+    "deadstock" -> "Dead / Slow Stock"
+    "valuation" -> "Stock Valuation"
+    "branchcompare" -> "Branch Comparison"
+    "profitproduct" -> "Profit by Product"
+    "profitcategory" -> "Profit by Category"
+    "salescharts" -> "Analytics"
+    "custaging" -> "Customer Aging"
+    "supaging" -> "Supplier Aging"
+    "custpayments" -> "Customer Payments"
+    "suppayments" -> "Supplier Payments"
+    "purchreturns" -> "Purchase Returns"
+    "purchorders" -> "Purchase Orders"
+    "journal" -> "Journal"
+    "vat" -> "VAT / Tax Report"
+    "bankrec" -> "Bank Reconciliation"
+    "assets" -> "Fixed Assets"
+    "budgets" -> "Budgets"
+    "payroll" -> "Payroll"
+    "permissions" -> "Users & Permissions"
+    "csvimport" -> "Import CSV"
+    "csvexport" -> "Export CSV"
+    "syncstatus" -> "Sync Status"
+    "batches" -> "Batch Tracking"
+    "serials" -> "Serial Numbers"
     else -> "DeryAccount"
 }

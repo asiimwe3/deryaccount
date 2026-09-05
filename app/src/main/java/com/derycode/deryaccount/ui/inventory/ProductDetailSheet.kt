@@ -49,7 +49,7 @@ private data class ProductStats(
 
 private fun movementTint(type: String): Color = when (type) {
     "SALE", "TRANSFER_OUT", "DAMAGE", "EXPIRY" -> Color(0xFFCC0000)
-    "PURCHASE", "RETURN", "TRANSFER_IN", "OPENING" -> Color(0xFF1B8A3A)
+    "PURCHASE", "RETURN", "TRANSFER_IN", "OPENING", "SUPPLIER_RETURN" -> Color(0xFF1B8A3A)
     else -> Color(0xFF666666)
 }
 
@@ -272,6 +272,7 @@ private fun labelFor(type: String) = when (type) {
     "DAMAGE" -> "Damaged"
     "EXPIRY" -> "Expired"
     "COUNT" -> "Stock count"
+    "SUPPLIER_RETURN" -> "Returned to supplier"
     else -> type
 }
 

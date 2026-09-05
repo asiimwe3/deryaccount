@@ -38,7 +38,11 @@ class AccountingRepo(private val db: AppDatabase) {
             Account("acc-transport","5220","Transport & Fuel","EXPENSE", sortOrder = 14),
             Account("acc-utilities","5230","Water & Electricity (UEL)","EXPENSE", sortOrder = 15),
             Account("acc-airtime","5240","Airtime & Data", "EXPENSE", sortOrder = 16),
-            Account("acc-sundry", "5900", "Sundry / Other Expenses","EXPENSE", sortOrder = 17)
+            Account("acc-sundry", "5900", "Sundry / Other Expenses","EXPENSE", sortOrder = 17),
+            Account("acc-assets", "1300", "Fixed Assets",  "ASSET", sortOrder = 5),
+            Account("acc-accdepr","1350", "Accumulated Depreciation", "ASSET", sortOrder = 5),
+            Account("acc-vatout", "2500", "VAT Payable",   "LIABILITY", sortOrder = 6),
+            Account("acc-depexp","5310", "Depreciation",   "EXPENSE", sortOrder = 13)
         )
         val CASH = "acc-cash"
         val PETTY = "acc-petty"
@@ -245,6 +249,46 @@ class AccountingRepo(private val db: AppDatabase) {
     }
 
     // ------- Reports -------
+
+    /**
+     * Goods returned to supplier: stock leaves the books (Cr Stock) and we
+     * either get money back (Dr Cash) or owe less (Dr Creditors).
+     */
+    suspend fun postPurchaseReturn(refundMethod: String, costValue: Double, note: String) {
+        if (costValue <= 0.0) return
+        val dr = if (refundMethod == "SUPPLIER_CREDIT") CREDITORS else CASH
+        post(particulars = "Return to supplier ($note)", source = "STOCK",
+            debits = listOf(dr to costValue),
+            credits = listOf(STOCK to costValue))
+    }
+
+    /** Monthly straight-line depreciation: Dr Depreciation, Cr Accumulated Depreciation. */
+    suspend fun postDepreciation(total: Double, note: String) {
+        if (total <= 0.0) return
+        post(particulars = "Depreciation — $note", source = "EXPENSE",
+            debits = listOf("acc-depexp" to total),
+            credits = listOf("acc-accdepr" to total))
+    }
+
+    /** Payroll: Dr Salaries (gross), Cr Cash (net), Cr Creditors (deductions owed). */
+    suspend fun postPayroll(gross: Double, net: Double, deductions: Double, month: String) {
+        if (gross <= 0.0) return
+        val debits = listOf("acc-salaries" to gross)
+        val credits = buildList {
+            add(CASH to net)
+            if (deductions > 0.0) add(CREDITORS to deductions)
+        }
+        post(particulars = "Payroll — $month (net paid ${"%,.0f".format(net)})", source = "EXPENSE",
+            debits = debits, credits = credits)
+    }
+
+    /** VAT remitted to URA: Dr VAT Payable, Cr Cash. */
+    suspend fun postVatRemittance(amount: Double, period: String) {
+        if (amount <= 0.0) return
+        post(particulars = "VAT remittance — $period", source = "EXPENSE",
+            debits = listOf("acc-vatout" to amount),
+            credits = listOf(CASH to amount))
+    }
 
     suspend fun trialBalance(from: String, to: String) = db.journalDao().trialBalance(from, to)
 
