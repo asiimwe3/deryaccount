@@ -36,6 +36,40 @@ fun MoreScreen(
     var sbUrl by remember { mutableStateOf("") }
     var sbKey by remember { mutableStateOf("") }
     var backupMsg by remember { mutableStateOf<String?>(null) }
+    var restoreMsg by remember { mutableStateOf<String?>(null) }
+    var restoreConfirm by remember { mutableStateOf(false) }
+    val restorePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        restoreMsg = try {
+            if (uri == null) null
+            else {
+                val dbDir = context.getDatabasePath("deryaccount.db").parentFile!!
+                val pending = java.io.File(dbDir, "restore_pending.db")
+                context.contentResolver.openInputStream(uri)!!.use { input ->
+                    pending.outputStream().use { input.copyTo(it) }
+                }
+                if (pending.length() < 1024) {
+                    pending.delete()
+                    "That file doesn't look like a DeryAccount backup."
+                } else {
+                    "Restore staged ✓ — close and reopen the app to finish restoring."
+                }
+            }
+        } catch (e: Exception) { "Restore failed: ${e.message}" }
+    }
+    if (restoreConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { restoreConfirm = false },
+            title = { Text("Restore from backup?", fontWeight = FontWeight.Bold) },
+            text = { Text("Pick a deryaccount_backup .db file (e.g. from Downloads). " +
+                "It will REPLACE the current data when you next open the app. " +
+                "Make a fresh backup first if unsure.") },
+            confirmButton = { Button(onClick = {
+                restoreConfirm = false
+                restorePicker.launch(arrayOf("*/*"))
+            }) { Text("Choose file") } },
+            dismissButton = { TextButton(onClick = { restoreConfirm = false }) { Text("Cancel") } })
+    }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Text("More", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
@@ -92,13 +126,27 @@ fun MoreScreen(
                     scope.launch {
                         val dbPath = context.getDatabasePath("deryaccount.db").absolutePath
                         val f = DeviceStore.backupDatabase(context, dbPath)
-                        backupMsg = if (f != null) "Backup saved in DeryAccount/backups ✓"
-                        else "Backup failed — try again"
+                        // Second copy into public Downloads — survives uninstall,
+                        // so the books can be restored on a new install or new device.
+                        val downloads = DeviceStore.backupToDownloads(context, dbPath)
+                        backupMsg = when {
+                            downloads != null -> "Backup saved in DeryAccount/backups and in Downloads (safe from uninstall) ✓"
+                            f != null -> "Backup saved in DeryAccount/backups ✓"
+                            else -> "Backup failed — try again"
+                        }
                     }
                 }) { Text("Backup all data to device") }
                 backupMsg?.let {
                     Spacer(Modifier.height(6.dp))
                     Text(it, fontSize = 13.sp)
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = { restoreConfirm = true }) {
+                    Text("Restore from backup file")
+                }
+                restoreMsg?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
                 }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = { context.shareErrorLogs() }) {

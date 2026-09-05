@@ -51,6 +51,36 @@ object DeviceStore {
         return f
     }
 
+    /**
+     * Backup that SURVIVES an uninstall: written into public Downloads
+     * via MediaStore (Android 10+). Copies to public Documents on older
+     * devices. Returns the visible location, or null on failure.
+     */
+    fun backupToDownloads(context: Context, dbPath: String): String? {
+        val stamp = SimpleDateFormat("yyyy-MM-dd_HHmm", Locale.US).format(Date())
+        val name = "deryaccount_backup_$stamp.db"
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val cv = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+                    put(android.provider.MediaStore.Downloads.MIME_TYPE, "application/octet-stream")
+                }
+                val uri = context.contentResolver.insert(
+                    android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv) ?: return null
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    File(dbPath).inputStream().use { it.copyTo(out) }
+                }
+                "Downloads/$name"
+            } else {
+                val dir = File(Environment.getExternalStoragePublicDirectory(
+                    Environment.DIRECTORY_DOWNLOADS), FOLDER).apply { mkdirs() }
+                val dst = File(dir, name)
+                File(dbPath).copyTo(dst, overwrite = true)
+                "Downloads/${FOLDER}/$name"
+            }
+        } catch (e: Exception) { null }
+    }
+
     /** Full daily backup of the database file — copy of deryaccount.db. */
     fun backupDatabase(context: Context, dbPath: String): File? {
         return try {

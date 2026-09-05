@@ -21,7 +21,23 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Build debug APK
+      - name: Decode pinned signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/pinned.keystore"
+            echo "PINNED_KEYSTORE=$GITHUB_WORKSPACE/pinned.keystore" >> "$GITHUB_ENV"
+          else
+            echo "No ANDROID_KEYSTORE secret — building with default debug signing."
+          fi
+
+      - name: Build debug APK (pinned signature)
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ env.PINNED_KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon

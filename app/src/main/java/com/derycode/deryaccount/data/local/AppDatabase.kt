@@ -102,8 +102,29 @@ abstract class AppDatabase : RoomDatabase() {
 
         @Volatile private var INSTANCE: AppDatabase? = null
 
+        /**
+         * If the user picked a backup file in Settings → Restore, it was
+         * staged as restore_pending.db next to the live database. On the
+         * next open (fresh app start) we swap it in, atomically replacing
+         * the live DB. Runs BEFORE Room opens any file.
+         */
+        private fun applyPendingRestore(context: Context) {
+            try {
+                val dbDir = context.getDatabasePath("deryaccount.db").parentFile ?: return
+                val pending = File(dbDir, "restore_pending.db")
+                if (!pending.exists() || pending.length() < 1024L) return
+                val live = File(dbDir, "deryaccount.db")
+                listOf("-wal", "-shm").forEach {
+                    File(dbDir, "deryaccount.db$it").delete()
+                }
+                if (live.exists()) live.delete()
+                pending.renameTo(live)
+            } catch (_: Exception) { }
+        }
+
         fun get(context: Context): AppDatabase =
             INSTANCE ?: synchronized(this) {
+                applyPendingRestore(context.applicationContext)
                 INSTANCE ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
