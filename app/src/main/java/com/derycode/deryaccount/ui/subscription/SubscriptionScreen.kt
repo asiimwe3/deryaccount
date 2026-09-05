@@ -32,7 +32,7 @@ import com.derycode.deryaccount.billing.LicenseManager
 import com.derycode.deryaccount.billing.PlanTier
 import com.derycode.deryaccount.ui.theme.*
 
-private const val SUPPORT_WHATSAPP = "256772002326"
+private const val SUPPORT_WHATSAPP = "256762306675"
 
 private fun planColor(plan: PlanTier): Color = when (plan) {
     PlanTier.STARTER -> DaGreen
