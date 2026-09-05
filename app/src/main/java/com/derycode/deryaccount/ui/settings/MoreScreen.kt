@@ -128,7 +128,7 @@ fun MoreScreen(
                             Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                    if (rowTools.size < 3) Spacer(Modifier.weight(3 - rowTools.size))
+                    if (rowTools.size < 3) Spacer(Modifier.weight((3 - rowTools.size).toFloat()))
                 }
                 Spacer(Modifier.height(6.dp))
             }
@@ -143,7 +143,7 @@ fun MoreScreen(
                             Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                    if (rowTools.size < 3) Spacer(Modifier.weight(3 - rowTools.size))
+                    if (rowTools.size < 3) Spacer(Modifier.weight((3 - rowTools.size).toFloat()))
                 }
                 Spacer(Modifier.height(6.dp))
             }
@@ -158,7 +158,7 @@ fun MoreScreen(
                             Text(label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                    if (rowTools.size < 3) Spacer(Modifier.weight(3 - rowTools.size))
+                    if (rowTools.size < 3) Spacer(Modifier.weight((3 - rowTools.size).toFloat()))
                 }
                 Spacer(Modifier.height(6.dp))
             }

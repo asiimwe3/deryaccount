@@ -143,7 +143,6 @@ fun SupplierAgingScreen(db: AppDatabase, branchId: String) {
                 days = if (oldest != null) daysAgo(oldest.receivedAt) else 9999,
                 openInvoiceTotal = invoices.sumOf { it.remaining })
         }.sortedByDescending { it.days }
-        loaded = true
     }
     Column(Modifier.fillMaxSize().padding(12.dp)) {
         Text("Supplier Aging", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)

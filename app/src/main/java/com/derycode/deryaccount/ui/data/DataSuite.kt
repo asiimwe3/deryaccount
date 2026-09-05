@@ -90,6 +90,7 @@ fun CsvImportScreen(db: AppDatabase, branchId: String) {
                                 unit = f.getOrNull(6)?.takeIf { it.isNotBlank() } ?: "pcs",
                                 costPrice = cost, retailPrice = retail,
                                 wholesalePrice = null, stockQty = qty,
+                                expiryDate = null,
                                 branchId = branchId,
                                 createdAt = now, updatedAt = now))
                             created++

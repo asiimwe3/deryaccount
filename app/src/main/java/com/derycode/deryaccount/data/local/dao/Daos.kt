@@ -332,6 +332,9 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE isDeleted = 0 AND isActive = 1")
     suspend fun allOnce(): List<User>
 
+    @Query("SELECT * FROM users WHERE syncState = 'pending' AND isDeleted = 0")
+    suspend fun pendingSync(): List<User>
+
     @Query("SELECT * FROM users WHERE isActive = 1 AND isDeleted = 0 AND username = :username LIMIT 1")
     suspend fun byUsername(username: String): User?
 
