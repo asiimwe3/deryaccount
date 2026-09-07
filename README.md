@@ -340,3 +340,9 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   edit and delete suppliers, see total owed per supplier and overall.
 - "+ Add new supplier" is now available directly inside the supplier pickers
   of Purchase Returns and Purchase Orders, so you never get stuck picking.
+
+## v1.0.3 — New logo, store-ready package
+- New app icon everywhere: launcher icon, adaptive icon (Android 12+), round
+  icon, and splash screen now use the official navy DeryAccount "D" logo.
+- Prepared for third-party store distribution (Uptodown, APKPure, PalmStore):
+  512x512 store icon, description text, and this APK build.
