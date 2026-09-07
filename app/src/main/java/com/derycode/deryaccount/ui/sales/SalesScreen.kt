@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -197,6 +199,32 @@ private fun SaleDetailsScreen(db: AppDatabase, branchId: String, sale: Sale, cas
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("TOTAL", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = DaTextPrimary)
                     Text("UGX " + fmtN(sale.total), fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = DaGreen)
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = {
+                        detailsScope.launch {
+                            val f = com.derycode.deryaccount.util.Reprint.printPdf(detailsCtx, db, branchId, sale.id)
+                            if (f != null) com.derycode.deryaccount.util.Share.toWhatsApp(detailsCtx, f,
+                                caption = "Receipt ${'$'}{sale.receiptNo} — thank you for your business!")
+                        }
+                    }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Share, null, Modifier.size(15.dp)); Text(" Share", fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(onClick = {
+                        detailsScope.launch {
+                            val branch = try { db.branchDao().get(branchId)?.name } catch (_: Exception) { null }
+                            val f = com.derycode.deryaccount.util.PdfExport.invoicePdf(
+                                detailsCtx, branch ?: "My Shop", "INV-" + sale.receiptNo,
+                                sale.customerId?.let { "Customer" } ?: "Walk-in Customer",
+                                items.map { Triple(it.name, it.qty, it.lineTotal) },
+                                sale.total)
+                            com.derycode.deryaccount.util.Share.file(detailsCtx, f, "Share Invoice " + sale.receiptNo)
+                        }
+                    }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Description, null, Modifier.size(15.dp)); Text(" Invoice", fontSize = 12.sp)
+                    }
                 }
             }
         }

@@ -299,3 +299,15 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   on the Income Statement records a manual opening stock value.
 - Every stock added after opening stock (top-ups, positive adjustments) is
   treated as a Purchase in the statement.
+
+## v0.14.0 — Backup, Feedback, sharing, docs & legal, onboarding, full side menu
+1. Backup & Export: one ZIP with ALL receipts, reports, books/invoices and the
+   complete database → share to Google Drive, TeraBox, email or WhatsApp.
+2. Give Feedback: opens WhatsApp chat with Derycode support (+256 762 306 675).
+3. Enterprise sharing: share any receipt or invoice as PDF on WhatsApp or any
+   app from the Sales details screen (Share + Invoice buttons).
+4. Documentation (user guide), Terms & Conditions, Privacy Policy — all
+   offline in-app pages.
+5. Onboarding flow: create account → business profile with logo → activate
+   subscription → dashboard. Free trial now 3 days after install.
+6. Side menu now lists EVERY section — each opens its own page offline.

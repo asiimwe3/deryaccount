@@ -5,6 +5,8 @@ import java.io.File
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
@@ -90,6 +92,27 @@ fun MoreScreen(
             }
             OutlinedButton(onClick = { onNavigate("shift") }, modifier = Modifier.weight(1f).height(52.dp)) {
                 Text("Shift", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(onClick = { onNavigate("backup") }, modifier = Modifier.weight(1f).height(52.dp)) {
+                Icon(Icons.Default.CloudUpload, null, Modifier.size(18.dp)); Text("  Backup", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(onClick = { onNavigate("feedback") }, modifier = Modifier.weight(1f).height(52.dp)) {
+                Icon(Icons.Default.Chat, null, Modifier.size(18.dp)); Text("  Feedback", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = { onNavigate("docs") }, modifier = Modifier.weight(1f).height(48.dp)) {
+                Text("Documentation", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(onClick = { onNavigate("terms") }, modifier = Modifier.weight(1f).height(48.dp)) {
+                Text("Terms", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(onClick = { onNavigate("privacy") }, modifier = Modifier.weight(1f).height(48.dp)) {
+                Text("Privacy", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(Modifier.height(16.dp))

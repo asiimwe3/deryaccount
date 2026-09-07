@@ -164,7 +164,7 @@ object LicenseManager {
     private const val K_KEY = "key"
     private const val K_EXPIRES = "expires_at"
 
-    const val TRIAL_DAYS = 21
+    const val TRIAL_DAYS = 3
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

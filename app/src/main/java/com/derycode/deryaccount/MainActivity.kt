@@ -184,18 +184,43 @@ fun DeryAccountApp() {
         try { db.branchDao().get(branchId)?.let { branchName = it.name } } catch (_: Exception) {}
     }
 
+    // ---- onboarding chain: account → business profile → subscription → dashboard ----
+    val appContext = androidx.compose.ui.platform.LocalContext.current
+    var onboarded by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(userId) {
+        val prefs = appContext.getSharedPreferences("deryaccount", android.content.Context.MODE_PRIVATE)
+        val p = try {
+            com.derycode.deryaccount.util.SessionManager(appContext).businessProfileNow()
+        } catch (_: Exception) { null }
+        // no business profile yet → run onboarding once
+        onboarded = prefs.getBoolean("onboarded_$userId", false) || p != null
+        if (onboarded == false) {
+            navController.navigate("onboarding") { launchSingleTop = true }
+        }
+    }
+
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scopeDrawer = rememberCoroutineScope()
     val isCashier = role == "CASHIER"
     val drawerItems = buildList {
+        add(Triple("home", "Dashboard", Icons.Default.Home))
         add(Triple("pos", "Sell / POS", Icons.Default.PointOfSale))
+        add(Triple("sales", "Sales", Icons.Default.Receipt))
         add(Triple("inventory", "Stock", Icons.Default.Inventory2))
         if (!isCashier) {
             add(Triple("books", "Books of Account", Icons.AutoMirrored.Filled.MenuBook))
+            add(Triple("expenses", "Expenses", Icons.Default.Payments))
+            add(Triple("customers", "Customers", Icons.Default.People))
+            add(Triple("shift", "Shift / Z-Report", Icons.Default.SwapHoriz))
             add(Triple("reports", "Reports", Icons.Default.BarChart))
             add(Triple("salescharts", "Analytics", Icons.Default.Timeline))
             add(Triple("subscription", "Subscription", Icons.Default.Verified))
+            add(Triple("backup", "Backup & Export", Icons.Default.CloudUpload))
         }
+        add(Triple("docs", "Documentation", Icons.Default.HelpOutline))
+        add(Triple("terms", "Terms & Conditions", Icons.Default.Gavel))
+        add(Triple("privacy", "Privacy Policy", Icons.Default.PrivacyTip))
+        add(Triple("feedback", "Give Feedback", Icons.Default.Chat))
         add(Triple("profile", "My Profile", Icons.Default.Person))
         add(Triple("more", "More", Icons.Default.Menu))
     }
@@ -352,6 +377,23 @@ fun DeryAccountApp() {
                     scope.launch { session.logout() }
                 }
             }
+            composable("onboarding") {
+                com.derycode.deryaccount.ui.settings.OnboardingScreen(session,
+                    onDone = { navController.navigate("subactivate") { launchSingleTop = true } },
+                    onSkipToSub = { navController.navigate("subactivate") { launchSingleTop = true } })
+            }
+            composable("subactivate") {
+                com.derycode.deryaccount.ui.subscription.SubscriptionScreen(session, onBack = {
+                    val prefs = appContext.getSharedPreferences("deryaccount", android.content.Context.MODE_PRIVATE)
+                    prefs.edit().putBoolean("onboarded_$userId", true).apply()
+                    navController.navigate("home") { popUpTo("home"); launchSingleTop = true }
+                })
+            }
+            composable("backup") { com.derycode.deryaccount.ui.settings.BackupScreen(session) }
+            composable("feedback") { com.derycode.deryaccount.ui.settings.FeedbackScreen() }
+            composable("docs") { com.derycode.deryaccount.ui.settings.DocumentationScreen() }
+            composable("terms") { com.derycode.deryaccount.ui.settings.TermsScreen() }
+            composable("privacy") { com.derycode.deryaccount.ui.settings.PrivacyScreen() }
             composable("subscription") {
                 com.derycode.deryaccount.ui.subscription.SubscriptionScreen(
                     session,
@@ -409,6 +451,13 @@ private fun appTitle(route: String?): String = when (route) {
     "expenses" -> "Expenses"
     "customers" -> "Customers"
     "subscription" -> "Subscription & Pricing"
+    "onboarding" -> "Set up your business"
+    "subactivate" -> "Activate Subscription"
+    "backup" -> "Backup & Export"
+    "feedback" -> "Give Feedback"
+    "docs" -> "Documentation"
+    "terms" -> "Terms & Conditions"
+    "privacy" -> "Privacy Policy"
     "profile" -> "My Profile"
     "shift" -> "Shift"
     "more" -> "More"
