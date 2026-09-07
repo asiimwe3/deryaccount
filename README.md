@@ -359,3 +359,8 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   invalidates) so the logo never previewed, printed or survived a restart.
   Logos are now stored offline in app storage and appear on every receipt,
   invoice and report.
+
+## v1.0.6 — Splash shows on every launch
+- Fixed the branded launch splash showing only for already-logged-in users:
+  it is now the very first thing on EVERY app launch (fresh installs and
+  sessions alike), then hands over to login/home.
