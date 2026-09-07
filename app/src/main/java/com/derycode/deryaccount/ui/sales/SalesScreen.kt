@@ -206,7 +206,7 @@ private fun SaleDetailsScreen(db: AppDatabase, branchId: String, sale: Sale, cas
                         detailsScope.launch {
                             val f = com.derycode.deryaccount.util.Reprint.printPdf(detailsCtx, db, branchId, sale.id)
                             if (f != null) com.derycode.deryaccount.util.Share.toWhatsApp(detailsCtx, f,
-                                caption = "Receipt ${'$'}{sale.receiptNo} — thank you for your business!")
+                                caption = "Receipt ${sale.receiptNo} — thank you for your business!")
                         }
                     }, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Default.Share, null, Modifier.size(15.dp)); Text(" Share", fontSize = 12.sp)

@@ -506,7 +506,7 @@ private fun IncomeStatementTab(accounting: AccountingRepo, context: android.cont
     LazyColumn(Modifier.fillMaxSize().padding(12.dp)) {
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                Text("INCOME STATEMENT — ${'$'}{periodLabel()}", fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                Text("INCOME STATEMENT — ${periodLabel()}", fontWeight = FontWeight.Bold, fontSize = 14.sp,
                     modifier = Modifier.weight(1f))
                 FilterChip(selected = period == 0, onClick = { period = 0 }, label = { Text("Month", fontSize = 11.sp) })
                 Spacer(Modifier.width(4.dp))
