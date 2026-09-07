@@ -183,7 +183,9 @@ private fun NewPurchaseReturnDialog(
     val scope = rememberCoroutineScope()
     var lines by remember { mutableStateOf<List<OpLine>>(emptyList()) }
     var supplier by remember { mutableStateOf<Supplier?>(null) }
+    var supplierList by remember { mutableStateOf(suppliers) }
     var showPickSupplier by remember { mutableStateOf(false) }
+    var showAddSupplier by remember { mutableStateOf(false) }
     var refundMethod by remember { mutableStateOf("SUPPLIER_CREDIT") }
     var note by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -199,7 +201,17 @@ private fun NewPurchaseReturnDialog(
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     TextButton(onClick = { supplier = null; showPickSupplier = false }) { Text("No supplier") }
-                    suppliers.forEach { s ->
+                    TextButton(onClick = { showAddSupplier = true }) {
+                        Text("+ Add new supplier", color = DaGreen) }
+                    if (showAddSupplier) {
+                        SupplierDialog(db, null) {
+                            showAddSupplier = false
+                            scope.launch {
+                                try { supplierList = db.supplierDao().observeAll().first() } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                    supplierList.forEach { s ->
                         TextButton(onClick = { supplier = s; showPickSupplier = false }) {
                             Column(Modifier.fillMaxWidth()) {
                                 Text(s.name, fontWeight = FontWeight.SemiBold)
@@ -373,7 +385,9 @@ private fun NewPurchaseOrderDialog(
     val scope = rememberCoroutineScope()
     var lines by remember { mutableStateOf<List<OpLine>>(emptyList()) }
     var supplier by remember { mutableStateOf<Supplier?>(null) }
+    var supplierList by remember { mutableStateOf(suppliers) }
     var showPickSupplier by remember { mutableStateOf(false) }
+    var showAddSupplier by remember { mutableStateOf(false) }
     var expected by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -389,7 +403,17 @@ private fun NewPurchaseOrderDialog(
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     TextButton(onClick = { supplier = null; showPickSupplier = false }) { Text("No supplier") }
-                    suppliers.forEach { s ->
+                    TextButton(onClick = { showAddSupplier = true }) {
+                        Text("+ Add new supplier", color = DaGreen) }
+                    if (showAddSupplier) {
+                        SupplierDialog(db, null) {
+                            showAddSupplier = false
+                            scope.launch {
+                                try { supplierList = db.supplierDao().observeAll().first() } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                    supplierList.forEach { s ->
                         TextButton(onClick = { supplier = s; showPickSupplier = false }) {
                             Text(s.name, fontWeight = FontWeight.SemiBold)
                         }

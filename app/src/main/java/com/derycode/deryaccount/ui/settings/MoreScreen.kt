@@ -88,7 +88,10 @@ fun MoreScreen(
                 Text("Expenses", fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
             OutlinedButton(onClick = { onNavigate("customers") }, modifier = Modifier.weight(1f).height(52.dp)) {
-                Text("Customers", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("Customers", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(onClick = { onNavigate("suppliers") }, modifier = Modifier.weight(1f).height(52.dp)) {
+                Text("Suppliers", fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
             OutlinedButton(onClick = { onNavigate("shift") }, modifier = Modifier.weight(1f).height(52.dp)) {
                 Text("Shift", fontSize = 14.sp, fontWeight = FontWeight.Bold)

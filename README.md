@@ -329,3 +329,9 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   (Derycode, directed by Derick Asiimwe), official website
   derycode.publicvm.com on all info pages + feedback screen.
 - Balance Sheet: profit relabelled "Net Profit (to date)".
+
+## v1.0.2 — Suppliers
+- New Suppliers screen (side menu → Suppliers, and More → Suppliers): add,
+  edit and delete suppliers, see total owed per supplier and overall.
+- "+ Add new supplier" is now available directly inside the supplier pickers
+  of Purchase Returns and Purchase Orders, so you never get stuck picking.

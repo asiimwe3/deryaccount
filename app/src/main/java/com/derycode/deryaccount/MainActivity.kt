@@ -211,6 +211,7 @@ fun DeryAccountApp() {
             add(Triple("books", "Books of Account", Icons.AutoMirrored.Filled.MenuBook))
             add(Triple("expenses", "Expenses", Icons.Default.Payments))
             add(Triple("customers", "Customers", Icons.Default.People))
+            add(Triple("suppliers", "Suppliers", Icons.Default.LocalShipping))
             add(Triple("shift", "Shift / Z-Report", Icons.Default.SwapHoriz))
             add(Triple("reports", "Reports & Analytics", Icons.Default.BarChart))
             add(Triple("subscription", "Subscription", Icons.Default.Verified))
@@ -351,6 +352,9 @@ fun DeryAccountApp() {
             composable("expenses") {
                 ExpensesScreen(db, branchId, userId)
             }
+            composable("suppliers") {
+                com.derycode.deryaccount.ui.business.SuppliersScreen(db)
+            }
             composable("customers") {
                 CustomersScreen(db)
             }
@@ -450,6 +454,7 @@ private fun appTitle(route: String?): String = when (route) {
     "reports" -> "Reports"
     "expenses" -> "Expenses"
     "customers" -> "Customers"
+    "suppliers" -> "Suppliers"
     "subscription" -> "Subscription & Pricing"
     "onboarding" -> "Set up your business"
     "subactivate" -> "Activate Subscription"
