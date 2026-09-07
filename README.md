@@ -285,3 +285,17 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
     58mm/80mm paper
 - Printing never fails because of a bad logo — if the image can't be read
   the document simply prints without it.
+
+## v0.13.0 — Income Statement in proper PERIODIC format + Opening Stock
+- NET SALES = Sales − Sales Returns − Sales Discounts (Sales now booked at
+  GROSS; discounts go to a new 4100 Sales Discounts contra account).
+- COGS = Opening Stock + Purchases − Purchase Returns − Closing Stock.
+  Opening/closing from the Stock ledger (always equals physical stock at cost);
+  purchases/returns from stock movements at cost.
+- GROSS PROFIT = Net Sales − COGS; NET PROFIT = GP + Other Income − OpEx.
+  Revaluation gain no longer double-counted (it is netted in closing stock).
+- OPENING STOCK: Quick Stock Setup now posts Dr Stock / Cr Capital (capital,
+  not a cash purchase) with OPENING-type movements. New "Opening Stock" button
+  on the Income Statement records a manual opening stock value.
+- Every stock added after opening stock (top-ups, positive adjustments) is
+  treated as a Purchase in the statement.

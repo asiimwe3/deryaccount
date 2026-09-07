@@ -138,7 +138,9 @@ class PosRepository(private val context: Context, private val db: AppDatabase) {
             accounting.postSale(
                 total, paymentMethod, receiptNo,
                 items.size,
-                lines.sumOf { it.qty * it.product.costPrice }
+                lines.sumOf { it.qty * it.product.costPrice },
+                gross = subtotal + taxTotal,      // Sales at FULL price before discount
+                discount = discount              // discount → Sales Discounts account
             )
         }
 

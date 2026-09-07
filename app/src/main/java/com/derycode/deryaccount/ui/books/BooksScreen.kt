@@ -479,86 +479,163 @@ private data class TBRow(val code: String, val name: String, val debit: Double, 
 private fun IncomeStatementTab(accounting: AccountingRepo, context: android.content.Context) {
     val scope = rememberCoroutineScope()
     var stmt by remember { mutableStateOf<AccountingRepo.IncomeStatement?>(null) }
-    LaunchedEffect(Unit) {
-        stmt = accounting.incomeStatement(monthStart(), todayEnd())
+    var showOpeningDialog by remember { mutableStateOf(false) }
+    var openingInput by remember { mutableStateOf("") }
+    var openingMsg by remember { mutableStateOf<String?>(null) }
+    fun load() {
+        scope.launch {
+            try { stmt = accounting.incomeStatement(monthStart(), todayEnd()) }
+            catch (_: Exception) {}
+        }
     }
+    LaunchedEffect(Unit) { load() }
     LazyColumn(Modifier.fillMaxSize().padding(12.dp)) {
         item {
             Text("INCOME STATEMENT — this month", fontWeight = FontWeight.Bold, fontSize = 14.sp)
             Spacer(Modifier.height(8.dp))
         }
         stmt?.let { s ->
-            if (s.revenue.isEmpty() && s.operatingExpenses.isEmpty() && s.cogs == 0.0) {
+            val empty = s.sales == 0.0 && s.purchases == 0.0 && s.closingStock == 0.0 &&
+                s.otherIncome.isEmpty() && s.operatingExpenses.isEmpty()
+            if (empty) {
                 item {
                     Text("No entries yet. Post entries in the Cash Book first.",
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                return@LazyColumn
-            }
-            item { Text("REVENUE", fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.primary) }
-            items(s.revenue.size) { i ->
-                StatementRow(
-                    if (s.revenue[i].second < 0) "Less: ${s.revenue[i].first}" else s.revenue[i].first,
-                    s.revenue[i].second, false)
-            }
-            item {
-                Text("NET SALES: ${fmt(s.netSales)}", fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp, modifier = Modifier.padding(vertical = 4.dp))
-                Spacer(Modifier.height(6.dp))
-                Text("Less: Cost of Sales", fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.error)
-                StatementRow("Cost of Sales", s.cogs, true)
-                Text("GROSS PROFIT: ${fmt(s.grossProfit)}", fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp, color = Color(0xFF2E7D32),
-                    modifier = Modifier.padding(vertical = 6.dp))
-                Divider()
-                Spacer(Modifier.height(6.dp))
-            }
-            if (s.otherIncome.isNotEmpty()) {
-                item { Text("OTHER INCOME (unrealized)", fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.primary) }
-                items(s.otherIncome.size) { i ->
-                    StatementRow(s.otherIncome[i].first, s.otherIncome[i].second, false)
+            } else {
+                item {
+                    Text("REVENUE", fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary)
+                    StatementRow("Sales", s.sales, false)
+                    StatementRow("Less: Sales Returns", s.salesReturns, true)
+                    StatementRow("Less: Sales Discounts", s.salesDiscounts, true)
+                    Text("NET SALES: ${fmt(s.netSales)}", fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp, modifier = Modifier.padding(vertical = 4.dp))
+                    Spacer(Modifier.height(6.dp))
                 }
-                item { Spacer(Modifier.height(6.dp)) }
-            }
-            item { Text("OPERATING EXPENSES", fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.error) }
-            items(s.operatingExpenses.size) { i ->
-                StatementRow(s.operatingExpenses[i].first, s.operatingExpenses[i].second, true)
+                item {
+                    Text("COST OF GOODS SOLD", fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.error)
+                    StatementRow("Opening Stock", s.openingStock, false)
+                    StatementRow("Add: Purchases", s.purchases, false)
+                    StatementRow("Less: Purchase Returns", s.purchaseReturns, true)
+                    StatementRow("Less: Closing Stock", s.closingStock, true)
+                    Text("COST OF GOODS SOLD: ${fmt(s.cogs)}", fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp, modifier = Modifier.padding(vertical = 2.dp))
+                    Text("GROSS PROFIT: ${fmt(s.grossProfit)}", fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp, color = Color(0xFF2E7D32),
+                        modifier = Modifier.padding(vertical = 6.dp))
+                    Divider()
+                    Spacer(Modifier.height(6.dp))
+                }
+                item {
+                    Text("OTHER INCOME", fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary)
+                    if (s.otherIncome.isEmpty())
+                        Text("—", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    s.otherIncome.forEach { StatementRow(it.first, it.second, false) }
+                    Spacer(Modifier.height(6.dp))
+                }
+                item {
+                    Text("OPERATING EXPENSES", fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.error)
+                    s.operatingExpenses.forEach { StatementRow(it.first, it.second, true) }
+                    Text("Total Operating Expenses: ${fmt(s.totalOperatingExpenses)}",
+                        fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                        modifier = Modifier.padding(vertical = 4.dp))
+                    Divider()
+                    Text(
+                        if (s.netProfit >= 0) "NET PROFIT: ${fmt(s.netProfit)}"
+                        else "NET LOSS: ${fmt(-s.netProfit)}",
+                        fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
+                        color = if (s.netProfit >= 0) Color(0xFF2E7D32) else Color(0xFFC62828),
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
             }
             item {
-                Text("Total Operating Expenses: ${fmt(s.totalOperatingExpenses)}", fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp, modifier = Modifier.padding(vertical = 4.dp))
-                Divider()
-                Text(
-                    if (s.netProfit >= 0) "NET PROFIT: ${fmt(s.netProfit)}"
-                    else "NET LOSS: ${fmt(-s.netProfit)}",
-                    fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
-                    color = if (s.netProfit >= 0) Color(0xFF2E7D32) else Color(0xFFC62828),
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-                OutlinedButton(onClick = {
-                    val body = s.revenue.map { listOf("Revenue", it.first, fmt(it.second)) } +
-                        listOf(listOf("", "Net Sales", fmt(s.netSales)),
-                               listOf("", "Cost of Sales", fmt(-s.cogs)),
-                               listOf("", "GROSS PROFIT", fmt(s.grossProfit))) +
-                        s.otherIncome.map { listOf("Other Income", it.first, fmt(it.second)) } +
-                        s.operatingExpenses.map { listOf("Expense", it.first, fmt(it.second)) }
-                    val file = PdfExport.bookPdf(context, "Income Statement", "DeryAccount",
-                        listOf("TYPE  ACCOUNT  AMOUNT"), body,
-                        listOf("Net Sales ${fmt(s.netSales)}",
-                               "Gross Profit ${fmt(s.grossProfit)}",
-                               "Total Operating Expenses ${fmt(s.totalOperatingExpenses)}",
-                               if (s.netProfit >= 0) "NET PROFIT ${fmt(s.netProfit)}"
-                               else "NET LOSS ${fmt(-s.netProfit)}"))
-                    try { PdfExport.printPdf(context, file, "Income Statement") } catch (_: Exception) {}
-                }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Print, null); Text("  Print / Save PDF")
+                openingMsg?.let { m ->
+                    Text(m, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                    Spacer(Modifier.height(4.dp))
+                }
+                Row(Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { showOpeningDialog = true }, Modifier.weight(1f)) {
+                        Icon(Icons.Default.Add, null, Modifier.size(16.dp))
+                        Text("  Opening Stock", fontSize = 12.sp)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(onClick = {
+                        val x = stmt ?: return@OutlinedButton
+                        val body = listOf(
+                            listOf("", "Sales", fmt(x.sales)),
+                            listOf("", "Less: Sales Returns", fmt(x.salesReturns)),
+                            listOf("", "Less: Sales Discounts", fmt(x.salesDiscounts)),
+                            listOf("", "NET SALES", fmt(x.netSales)),
+                            listOf("", "Opening Stock", fmt(x.openingStock)),
+                            listOf("", "Add: Purchases", fmt(x.purchases)),
+                            listOf("", "Less: Purchase Returns", fmt(x.purchaseReturns)),
+                            listOf("", "Less: Closing Stock", fmt(x.closingStock)),
+                            listOf("", "COST OF GOODS SOLD", fmt(x.cogs)),
+                            listOf("", "GROSS PROFIT", fmt(x.grossProfit))
+                        ) + x.otherIncome.map { listOf("Other Income", it.first, fmt(it.second)) } +
+                            x.operatingExpenses.map { listOf("Expense", it.first, fmt(it.second)) } +
+                            listOf(
+                                listOf("", "Total Operating Expenses", fmt(x.totalOperatingExpenses)),
+                                listOf("", if (x.netProfit >= 0) "NET PROFIT" else "NET LOSS",
+                                    fmt(if (x.netProfit >= 0) x.netProfit else -x.netProfit)))
+                        val file = PdfExport.bookPdf(context, "Income Statement", "DeryAccount",
+                            listOf("TYPE  ACCOUNT  AMOUNT"), body,
+                            listOf("Net Sales ${fmt(x.netSales)}",
+                                "Gross Profit ${fmt(x.grossProfit)}",
+                                "Total Operating Expenses ${fmt(x.totalOperatingExpenses)}",
+                                if (x.netProfit >= 0) "NET PROFIT ${fmt(x.netProfit)}"
+                                else "NET LOSS ${fmt(-x.netProfit)}"))
+                        try { PdfExport.printPdf(context, file, "Income Statement") } catch (_: Exception) {}
+                    }, Modifier.weight(1f)) {
+                        Icon(Icons.Default.Print, null, Modifier.size(16.dp))
+                        Text("  Print / PDF", fontSize = 12.sp)
+                    }
                 }
             }
         }
+    }
+    if (showOpeningDialog) {
+        AlertDialog(
+            onDismissRequest = { showOpeningDialog = false; openingMsg = null },
+            title = { Text("Record Opening Stock", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Goods the business already owns at the start — valued at cost. " +
+                        "This is capital, NOT a purchase: no cash leaves the business. " +
+                        "Stock you buy after this is recorded as a purchase.",
+                        fontSize = 12.sp)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = openingInput, onValueChange = { openingInput = it },
+                        label = { Text("Opening stock value (UGX)") },
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                            keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth())
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val v = openingInput.replace("[^0-9]".toRegex(), "").toDoubleOrNull()
+                    if (v == null || v <= 0.0) { openingMsg = "Enter a value above zero."; return@Button }
+                    scope.launch {
+                        try {
+                            accounting.postOpeningStock(v, "manual entry")
+                            openingMsg = "Opening stock of UGX %,d recorded.".format(v.toLong())
+                            openingInput = ""
+                            showOpeningDialog = false
+                            load()
+                        } catch (e: Exception) { openingMsg = e.message }
+                    }
+                }) { Text("Record") }
+            },
+            dismissButton = { TextButton(onClick = { showOpeningDialog = false }) { Text("Cancel") } }
+        )
     }
 }
 

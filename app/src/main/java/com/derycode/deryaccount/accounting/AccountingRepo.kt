@@ -31,6 +31,7 @@ class AccountingRepo(private val db: AppDatabase) {
             Account("acc-sales",  "4000", "Sales / Revenue","INCOME", sortOrder = 9),
             Account("acc-reval",   "4900", "Stock Revaluation Gain", "INCOME", sortOrder = 9),
             Account("acc-returns","4150","Sales Returns",   "INCOME", sortOrder = 9),
+            Account("acc-disc",  "4100", "Sales Discounts", "INCOME", sortOrder = 9),
             Account("acc-cogs",   "5000", "Cost of Sales",  "EXPENSE", sortOrder = 10),
             Account("acc-purchases","5100","Purchases",     "EXPENSE", sortOrder = 11),
             Account("acc-rent",   "5200", "Rent",           "EXPENSE", sortOrder = 12),
@@ -53,6 +54,9 @@ class AccountingRepo(private val db: AppDatabase) {
         val CREDITORS = "acc-creditors"
         val REVAL = "acc-reval"
         val RETURNS = "acc-returns"
+        val SALES_DISCOUNTS = "acc-disc"
+        val CAPITAL = "acc-capital"
+        val PURCHASES = "acc-purchases"
         val COGS = "acc-cogs"
         val SUNDAY_RUN = "acc-sundry"
     }
@@ -98,6 +102,7 @@ class AccountingRepo(private val db: AppDatabase) {
             "POS" -> "POS"
             "EXPENSE" -> "PV"
             "CAPITAL" -> "CAP"
+            "OPENING" -> "OS"
             else -> "CB"
         }
         val entryId = UUID.randomUUID().toString()
@@ -138,18 +143,25 @@ class AccountingRepo(private val db: AppDatabase) {
             debits = listOf(cashAccount to amount), credits = listOf("acc-capital" to amount))
     }
 
-    /** POS sale posting: Dr cash/bank/debtors, Cr sales. */
+    /** POS sale posting: Dr cash/bank/debtors + Dr Sales Discounts, Cr Sales (gross).
+     *  Sales is booked at GROSS (before discount); the discount goes to its own
+     *  contra-revenue account so the Income Statement can show the exact format:
+     *  NET SALES = SALES − RETURNS − DISCOUNTS. `amount` is the net collected. */
     suspend fun postSale(amount: Double, method: String, receiptNo: String,
-                        itemCount: Int = 0, costTotal: Double = 0.0) {
+                        itemCount: Int = 0, costTotal: Double = 0.0,
+                        gross: Double = 0.0, discount: Double = 0.0) {
         val debitAccount = when (method) {
             "MTN_MOMO", "AIRTEL_MONEY" -> BANK
             "CREDIT" -> DEBTORS
             else -> CASH
         }
         val detail = if (itemCount > 0) "$itemCount item${if (itemCount == 1) "" else "s"}" else "sale"
-        if (amount > 0) {
+        val g = if (gross > 0) gross else amount
+        if (g > 0) {
+            val debits = mutableListOf(debitAccount to amount)
+            if (discount > 0) debits.add(SALES_DISCOUNTS to discount)
             post(particulars = "Sales — $detail ($receiptNo)", source = "POS",
-                debits = listOf(debitAccount to amount), credits = listOf(SALES to amount))
+                debits = debits, credits = listOf(SALES to g))
         }
         // Cost of sales: keeps the Stock account in step with physical stock
         if (costTotal > 0) {
@@ -248,6 +260,15 @@ class AccountingRepo(private val db: AppDatabase) {
             debits = listOf(STOCK to amount), credits = listOf(creditAccount to amount))
     }
 
+    /** Opening stock: goods the business ALREADY owns at start-up or period start.
+     *  Dr Stock, Cr Capital — not a purchase, no cash leaves the business.
+     *  Stock added AFTER opening stock is recorded as a normal purchase. */
+    suspend fun postOpeningStock(value: Double, note: String) {
+        if (value <= 0) return
+        post(particulars = "Opening stock ($note)", source = "OPENING",
+            debits = listOf(STOCK to value), credits = listOf(CAPITAL to value))
+    }
+
     // ------- Reports -------
 
     /**
@@ -293,20 +314,33 @@ class AccountingRepo(private val db: AppDatabase) {
     suspend fun trialBalance(from: String, to: String) = db.journalDao().trialBalance(from, to)
 
     /**
-     * Income statement, in the format bookkeepers expect:
-     *   Net Sales = Sales − Sales Returns
-     *   Gross Profit = Net Sales − Cost of Sales
-     *   Net Profit = Gross Profit + Other Income − Operating Expenses
-     * Cost of Sales is kept OUT of operating expenses; revaluation gains are
-     * unrealized, so they appear after gross profit as Other Income.
+     * Income statement, PERIODIC format (the way Ugandan bookkeepers lay it out):
+     *   NET SALES  = Sales − Sales Returns − Sales Discounts
+     *   COGS       = Opening Stock + Purchases − Purchase Returns − Closing Stock
+     *   GROSS PROFIT = Net Sales − COGS
+     *   NET PROFIT = Gross Profit + Other Income − Operating Expenses
+     *
+     * Opening/Closing stock come from the Stock ledger (which always equals the
+     * physical stock list at cost). Purchases and Purchase Returns come from
+     * stock movements valued at cost. Stock Revaluation Gain is EXCLUDED from
+     * Other Income because it is already netted inside Closing Stock (counting
+     * it twice would inflate profit). Per-sale Cost-of-Sales postings keep the
+     * Stock ledger matched with physical stock; the statement itself is computed
+     * periodically, so they are excluded from Operating Expenses.
      */
     data class IncomeStatement(
-        val revenue: List<Pair<String, Double>>,      // sales + returns (returns negative)
-        val cogs: Double,
-        val otherIncome: List<Pair<String, Double>>,  // unrealized gains (revaluation)
+        val sales: Double,
+        val salesReturns: Double,
+        val salesDiscounts: Double,
+        val openingStock: Double,
+        val purchases: Double,
+        val purchaseReturns: Double,
+        val closingStock: Double,
+        val otherIncome: List<Pair<String, Double>>,
         val operatingExpenses: List<Pair<String, Double>>
     ) {
-        val netSales: Double get() = revenue.sumOf { it.second }
+        val netSales: Double get() = sales - salesReturns - salesDiscounts
+        val cogs: Double get() = openingStock + purchases - purchaseReturns - closingStock
         val grossProfit: Double get() = netSales - cogs
         val otherIncomeTotal: Double get() = otherIncome.sumOf { it.second }
         val totalOperatingExpenses: Double get() = operatingExpenses.sumOf { it.second }
@@ -315,18 +349,34 @@ class AccountingRepo(private val db: AppDatabase) {
 
     suspend fun incomeStatement(from: String, to: String): IncomeStatement {
         val tb = trialBalance(from, to)
-        // income accounts have credit balances (netBalance negative) → flip sign
-        val revenue = tb.filter {
-            (it.accountId == SALES || it.accountId == RETURNS) && it.netBalance != 0.0
-        }.map { it.name to -it.netBalance }
-        val cogs = tb.filter { it.accountId == COGS }.sumOf { it.netBalance }
+        fun nb(id: String) = tb.firstOrNull { it.accountId == id }?.netBalance ?: 0.0
+        // Sales carries a credit balance (negative net) → flip; the contra
+        // accounts (Returns, Discounts) carry debit balances → positive as-is.
+        val sales = -nb(SALES)
+        val salesReturns = nb(RETURNS).coerceAtLeast(0.0)
+        val salesDiscounts = nb(SALES_DISCOUNTS).coerceAtLeast(0.0)
+        val openingStock = db.journalDao().balanceBefore(STOCK, from)
+        val closingStock = db.journalDao().balanceBefore(STOCK, to)
+        // Purchases = stock brought in AFTER opening stock (purchase top-ups and
+        // positive stock adjustments). Opening-stock setup movements are type
+        // OPENING and are excluded — they are capital, not purchases.
+        val purchases = db.stockMovementDao().movementValueIn(listOf("PURCHASE", "ADJUSTMENT"), from, to)
+        val purchaseReturns = db.stockMovementDao().movementValueOut(listOf("SUPPLIER_RETURN"), from, to)
         val otherIncome = tb.filter {
-            it.type == "INCOME" && it.accountId != SALES && it.accountId != RETURNS && it.netBalance != 0.0
+            it.type == "INCOME" &&
+            it.accountId !in listOf(SALES, RETURNS, SALES_DISCOUNTS, REVAL) &&
+            it.netBalance != 0.0
         }.map { it.name to -it.netBalance }
         val operatingExpenses = tb.filter {
-            it.type == "EXPENSE" && it.accountId != COGS && it.netBalance != 0.0
+            it.type == "EXPENSE" &&
+            it.accountId != COGS && it.accountId != PURCHASES &&
+            it.netBalance != 0.0
         }.map { it.name to it.netBalance }
-        return IncomeStatement(revenue, cogs, otherIncome, operatingExpenses)
+        return IncomeStatement(
+            sales, salesReturns, salesDiscounts,
+            openingStock, purchases, purchaseReturns, closingStock,
+            otherIncome, operatingExpenses
+        )
     }
 
     /**

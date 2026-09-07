@@ -210,6 +210,14 @@ data class PurchaseItemWithPurchase(
 
 @Dao
 interface StockMovementDao {
+    /** Periodic P&L: value (qty x cost) of incoming movements of the given types. */
+    @Query("SELECT COALESCE(SUM(m.qty * p.costPrice), 0.0) FROM stock_movements m JOIN products p ON m.productId = p.id WHERE m.type IN (:types) AND m.qty > 0 AND m.movedAt >= :from AND m.movedAt <= :to AND m.isDeleted = 0")
+    suspend fun movementValueIn(types: List<String>, from: String, to: String): Double
+
+    /** Periodic P&L: value (qty x cost) of outgoing movements of the given types. */
+    @Query("SELECT COALESCE(SUM(-m.qty * p.costPrice), 0.0) FROM stock_movements m JOIN products p ON m.productId = p.id WHERE m.type IN (:types) AND m.qty < 0 AND m.movedAt >= :from AND m.movedAt <= :to AND m.isDeleted = 0")
+    suspend fun movementValueOut(types: List<String>, from: String, to: String): Double
+
     @Query("SELECT * FROM stock_movements WHERE syncState = 'pending'")
     suspend fun pendingSync(): List<StockMovement>
 

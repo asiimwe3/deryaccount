@@ -77,13 +77,14 @@ fun QuickAddStockDialog(
                                         customQty, customCost)
                                 ), category!!, branchId)
                             }
-                            // Post to the books: Dr Stock, Cr Cash — at COST price x qty,
-                            // so closing stock in the books always matches the Stock screen.
+                            // Opening stock: goods the shop already owns. Dr Stock, Cr Capital
+                            // (NOT a purchase — no cash leaves the business). Stock added
+                            // AFTER this, before month end, is recorded as a purchase.
                             val total = picked.sumOf { it.qty * it.cost } +
                                 (if (customName.isNotBlank()) customQty * customCost else 0.0)
                             com.derycode.deryaccount.accounting.AccountingRepo(db).apply {
                                 ensureSeeded()
-                                postPurchase(total, "CASH", "opening stock")
+                                postOpeningStock(total, "quick setup")
                             }
                         }
                         onDone()
@@ -117,7 +118,7 @@ private suspend fun AppDatabase.createProducts(
         if (p.qty > 0) {
             stockMovementDao().upsert(StockMovement(
                 id = UUID.randomUUID().toString(), productId = id,
-                branchId = branchId, type = "PURCHASE", qty = p.qty,
+                branchId = branchId, type = "OPENING", qty = p.qty,
                 reference = null, note = "opening stock", movedAt = now,
                 createdAt = now, updatedAt = now))
         }
