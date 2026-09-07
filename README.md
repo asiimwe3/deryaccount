@@ -352,3 +352,10 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   navy gradient, tagline, D-mark logo, DeryAccount wordmark, Sales/Purchases/
   Stock/Reports feature strip, "Track • Manage • Grow", loading bar and a
   green wave footer. Shows for ~1.5s while the app loads in the background.
+
+## v1.0.5 — Business logo fix
+- Fixed "Add business logo" in onboarding: the picked image was never copied
+  into app storage (only the gallery's temporary URI was kept, which Android
+  invalidates) so the logo never previewed, printed or survived a restart.
+  Logos are now stored offline in app storage and appear on every receipt,
+  invoice and report.
