@@ -364,3 +364,13 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
 - Fixed the branded launch splash showing only for already-logged-in users:
   it is now the very first thing on EVERY app launch (fresh installs and
   sessions alike), then hands over to login/home.
+
+## v1.0.7 — Crash tracking + website cross-promotion
+- Crash reports now upload to the Derycode crash tracker on every launch
+  (verified end-to-end: app → saveDeryAccountCrash endpoint → CrashReport
+  database), so bugs are seen and fixed without asking shop owners for files.
+- Every thermal receipt and PDF receipt now carries
+  "Powered by DeryAccount — deryaccount.vercel.app", turning each customer
+  receipt into a promotion for the app.
+- New "Share DeryAccount" button on the More screen shares the download link
+  and website via WhatsApp or any app.

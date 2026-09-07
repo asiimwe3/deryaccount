@@ -66,4 +66,16 @@ object Share {
             catch (_: Exception) {}
         }
     }
+    /** Share the app with other shop owners — text message via WhatsApp or any app. */
+    fun shareApp(context: Context) {
+        val text = "I run my shop with DeryAccount — offline POS + books of account, made for Ugandan shops. " +
+            "Get it free: https://github.com/asiimwe3/deryaccount/releases/latest/download/deryaccount.apk\n" +
+            "Learn more: https://deryaccount.vercel.app"
+        val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(android.content.Intent.createChooser(send, "Share DeryAccount"))
+    }
+
 }

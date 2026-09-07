@@ -116,6 +116,7 @@ object PdfExport {
             add(Line("Paid ($method): UGX %,d".format(paid.toLong()), 10f))
             if (change > 0) add(Line("CHANGE:       UGX %,d".format(change.toLong()), 10f, true))
             add(Line(biz?.footer?.ifBlank { null } ?: "Thank you for your business!", 10f, color = Color.GRAY))
+            add(Line("Powered by DeryAccount — deryaccount.vercel.app", 9f, color = Color.GRAY))
         }
         val safe = receiptNo.replace(Regex("[^A-Za-z0-9\\-]"), "_")
         val logo = LogoStore.bitmapFrom(biz?.logoPath) ?: LogoStore.bitmap(context)

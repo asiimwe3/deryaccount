@@ -82,7 +82,7 @@ class EscPosPrinter(private val context: Context) {
         out.write(text("\n------------------------------\n"))
         out.write(text("${header.footer}\n"))
         out.write(0x1B); out.write(0x61); out.write(1)
-        out.write(text("Powered by DeryAccount\n"))
+        out.write(text("Powered by DeryAccount\nderyaccount.vercel.app\n"))
         out.write(text("\n\n\n"))
         out.write(0x1D); out.write(0x56); out.write(0x00) // cut paper
         return out.toByteArray()

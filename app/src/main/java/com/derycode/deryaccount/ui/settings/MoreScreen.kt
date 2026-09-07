@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -104,6 +105,13 @@ fun MoreScreen(
             }
             OutlinedButton(onClick = { onNavigate("feedback") }, modifier = Modifier.weight(1f).height(52.dp)) {
                 Icon(Icons.Default.Chat, null, Modifier.size(18.dp)); Text("  Feedback", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = { com.derycode.deryaccount.util.Share.shareApp(context) },
+                modifier = Modifier.weight(1f).height(52.dp)) {
+                Icon(Icons.Default.Share, null, Modifier.size(18.dp)); Text("  Share DeryAccount", fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
         }
         Spacer(Modifier.height(10.dp))

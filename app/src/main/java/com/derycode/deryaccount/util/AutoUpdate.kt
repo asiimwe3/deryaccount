@@ -103,7 +103,7 @@ object AutoUpdate {
     // copy files. Never throws; deletes a log only after it uploaded.
     // ----------------------------------------------------------------
     private const val CRASH_URL =
-        "https://superagent-d41c313d.base44.app/functions/saveDeryAccountCrash"
+        "https://superagent-c4c23880.base44.app/functions/saveDeryAccountCrash"
 
     fun uploadCrashLogs(context: Context) {
         Thread {
