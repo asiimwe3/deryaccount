@@ -1,4 +1,9 @@
 # DeryAccount
+
+**CURRENT WORKING VERSION: v1.0.2 (versionCode 39)** — released 7 September 2026.
+This is the live, tested version used in production. Latest release always at:
+https://github.com/asiimwe3/deryaccount/releases/latest/download/deryaccount.apk
+
 Offline-first multi-branch accounting & POS for Ugandan shops and supermarkets.
 
 ## Built for speed in a busy shop
