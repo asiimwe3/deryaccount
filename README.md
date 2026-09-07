@@ -311,3 +311,21 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
 5. Onboarding flow: create account → business profile with logo → activate
    subscription → dashboard. Free trial now 3 days after install.
 6. Side menu now lists EVERY section — each opens its own page offline.
+
+## v1.0.0 — READY FOR SALE
+- Engine cross-check: stock write-offs/damage/shrinkage now post to dedicated
+  5910 Stock Losses account (was buried in Sundry, double-counting profit);
+  excluded from P&L OpEx because periodic COGS absorbs them via closing stock.
+  P&L Net Profit now ties exactly to Balance Sheet equity.
+- Income Statement: period selector (This Month / This Year / All Time) —
+  transactions from any period now always visible.
+- Reports is now the analyst dashboard: best sellers, dead stock, valuation,
+  profit by item/category, charts, customer/supplier aging, branches —
+  standalone Analytics menu removed.
+- Activation countdown starts AT ACTIVATION: codes now carry days (not a
+  fixed expiry date); expiry = activation moment + days. Countdown shows
+  immediately on activation.
+- Documentation deepened: full engine explanation, company & director
+  (Derycode, directed by Derick Asiimwe), official website
+  derycode.publicvm.com on all info pages + feedback screen.
+- Balance Sheet: profit relabelled "Net Profit (to date)".

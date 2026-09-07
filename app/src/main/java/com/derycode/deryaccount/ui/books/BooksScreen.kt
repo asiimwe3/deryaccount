@@ -479,19 +479,36 @@ private data class TBRow(val code: String, val name: String, val debit: Double, 
 private fun IncomeStatementTab(accounting: AccountingRepo, context: android.content.Context) {
     val scope = rememberCoroutineScope()
     var stmt by remember { mutableStateOf<AccountingRepo.IncomeStatement?>(null) }
+    var period by remember { mutableStateOf(0) }   // 0=this month 1=this year 2=all time
     var showOpeningDialog by remember { mutableStateOf(false) }
     var openingInput by remember { mutableStateOf("") }
     var openingMsg by remember { mutableStateOf<String?>(null) }
+    fun periodFrom(): String = when (period) {
+        1 -> java.time.LocalDate.now().withDayOfYear(1).toString() + "T00:00:00.000Z"
+        2 -> "1970-01-01T00:00:00.000Z"
+        else -> monthStart()
+    }
+    fun periodLabel(): String = when (period) {
+        1 -> "this year"; 2 -> "all time"; else -> "this month"
+    }
     fun load() {
         scope.launch {
-            try { stmt = accounting.incomeStatement(monthStart(), todayEnd()) }
+            try { stmt = accounting.incomeStatement(periodFrom(), todayEnd()) }
             catch (_: Exception) {}
         }
     }
-    LaunchedEffect(Unit) { load() }
+    LaunchedEffect(period) { load() }
     LazyColumn(Modifier.fillMaxSize().padding(12.dp)) {
         item {
-            Text("INCOME STATEMENT — this month", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Text("INCOME STATEMENT — ${'$'}{periodLabel()}", fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                    modifier = Modifier.weight(1f))
+                FilterChip(selected = period == 0, onClick = { period = 0 }, label = { Text("Month", fontSize = 11.sp) })
+                Spacer(Modifier.width(4.dp))
+                FilterChip(selected = period == 1, onClick = { period = 1 }, label = { Text("Year", fontSize = 11.sp) })
+                Spacer(Modifier.width(4.dp))
+                FilterChip(selected = period == 2, onClick = { period = 2 }, label = { Text("All", fontSize = 11.sp) })
+            }
             Spacer(Modifier.height(8.dp))
         }
         stmt?.let { s ->
@@ -499,7 +516,7 @@ private fun IncomeStatementTab(accounting: AccountingRepo, context: android.cont
                 s.otherIncome.isEmpty() && s.operatingExpenses.isEmpty()
             if (empty) {
                 item {
-                    Text("No entries yet. Post entries in the Cash Book first.",
+                    Text("No entries in this period. Try 'All', or post entries in the Cash Book first.",
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
@@ -694,7 +711,7 @@ private fun BalanceSheetTab(accounting: AccountingRepo, context: android.content
                     StatementRow(sh.equity[i].first, sh.equity[i].second, false)
                 }
                 item {
-                    StatementRow("Net Profit (this period)", sh.profit, false)
+                    StatementRow("Net Profit (to date)", sh.profit, false)
                     val equityTotal = sh.equity.sumOf { it.second } + sh.profit
                     val total = sh.assets.sumOf { it.second }
                     Text("Total Equity: ${fmt(equityTotal)}",

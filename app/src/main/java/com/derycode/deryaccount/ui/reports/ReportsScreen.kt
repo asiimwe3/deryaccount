@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
  * same whether or not any sync has run.
  */
 @Composable
-fun ReportsScreen(db: AppDatabase, branchId: String) {
+fun ReportsScreen(db: AppDatabase, branchId: String, onNavigate: (String) -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
 
@@ -93,9 +93,35 @@ fun ReportsScreen(db: AppDatabase, branchId: String) {
         Spacer(Modifier.height(12.dp))
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp)) {
-                Text("Best sellers, stock valuation and multi-branch comparison arrive in v1.1 — "
-                     + "the database already records everything they need.",
-                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("ANALYTICS", fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { onNavigate("bestsellers") }, Modifier.weight(1f)) {
+                        Text("Best Sellers", fontSize = 11.sp) }
+                    OutlinedButton(onClick = { onNavigate("deadstock") }, Modifier.weight(1f)) {
+                        Text("Dead Stock", fontSize = 11.sp) }
+                    OutlinedButton(onClick = { onNavigate("valuation") }, Modifier.weight(1f)) {
+                        Text("Valuation", fontSize = 11.sp) }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { onNavigate("profitproduct") }, Modifier.weight(1f)) {
+                        Text("Profit/Item", fontSize = 11.sp) }
+                    OutlinedButton(onClick = { onNavigate("profitcategory") }, Modifier.weight(1f)) {
+                        Text("Profit/Cat.", fontSize = 11.sp) }
+                    OutlinedButton(onClick = { onNavigate("salescharts") }, Modifier.weight(1f)) {
+                        Text("Charts", fontSize = 11.sp) }
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { onNavigate("custaging") }, Modifier.weight(1f)) {
+                        Text("Customer Aging", fontSize = 11.sp) }
+                    OutlinedButton(onClick = { onNavigate("supaging") }, Modifier.weight(1f)) {
+                        Text("Supplier Aging", fontSize = 11.sp) }
+                    OutlinedButton(onClick = { onNavigate("branchcompare") }, Modifier.weight(1f)) {
+                        Text("Branches", fontSize = 11.sp) }
+                }
             }
         }
     }

@@ -20,6 +20,7 @@ import com.derycode.deryaccount.util.Share
 /** Reusable scrollable page for long documents (docs, terms, privacy). */
 @Composable
 private fun DocPage(title: String, sections: List<Pair<String, String>>) {
+    val context = LocalContext.current
     Column(Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState())) {
         Text(title, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.height(10.dp))
@@ -29,7 +30,35 @@ private fun DocPage(title: String, sections: List<Pair<String, String>>) {
             Text(body, fontSize = 13.sp, lineHeight = 19.sp)
             Spacer(Modifier.height(14.dp))
         }
-        Text("DeryAccount · by Derycode · support: info@derycode.com · WhatsApp +256 762 306 675",
+        // About the company & director
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+                Text("About Derycode", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text("DeryAccount is developed by Derycode, a Ugandan software " +
+                    "engineering company founded and directed by Derick Asiimwe. " +
+                    "Derycode builds enterprise web platforms, mobile applications, " +
+                    "and digital business systems for African businesses — " +
+                    "engineering the digital future from Kampala.",
+                    fontSize = 12.sp, lineHeight = 18.sp)
+                Spacer(Modifier.height(8.dp))
+                Button(onClick = {
+                    try {
+                        context.startActivity(android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse("https://derycode.publicvm.com")))
+                    } catch (_: Exception) {}
+                }, modifier = Modifier.fillMaxWidth().height(46.dp)) {
+                    Icon(Icons.Default.Language, null, Modifier.size(18.dp))
+                    Text("  derycode.publicvm.com", fontSize = 13.sp)
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("Official website · info@derycode.com · WhatsApp +256 762 306 675",
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text("DeryAccount v1.0.0 · a Derycode product",
             fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -80,7 +109,24 @@ fun DocumentationScreen() = DocPage("Documentation — User Guide", listOf(
     "10. Printing & sharing" to
         "Receipts and invoices print on any Android printer (Bluetooth ESC/POS or system " +
         "print dialog), save as PDF, and share on WhatsApp. Books, stock reports and " +
-        "statements also print or save as PDF."
+        "statements also print or save as PDF.",
+    "11. How the engine stays correct" to
+        "Every action posts a balanced double-entry journal entry — the app refuses " +
+        "any entry where debits do not equal credits. The Stock account always equals " +
+        "the physical stock list at cost, and the Debtors account always equals customer " +
+        "balances. On every launch the app self-checks these three invariants and logs " +
+        "any mismatch. The Income Statement and Balance Sheet both read from the same " +
+        "journal, so the Net Profit in the Income Statement always ties to the Balance " +
+        "Sheet equity.",
+    "12. Reports & Analytics dashboard" to
+        "The Reports screen is your analyst dashboard: daily and monthly totals split " +
+        "by cash, mobile money and credit, best sellers, dead stock, stock valuation, " +
+        "profit by product and category, sales charts, customer and supplier aging, and " +
+        "multi-branch comparison — all offline.",
+    "13. The company" to
+        "DeryAccount is a product of Derycode, directed by Derick Asiimwe. For support, " +
+        "activation codes, customization or multi-branch deployments, contact Derycode " +
+        "on WhatsApp +256 762 306 675 or visit the official website derycode.publicvm.com."
 ))
 
 @Composable
@@ -166,6 +212,17 @@ fun FeedbackScreen() {
         OutlinedButton(onClick = { Share.feedbackWhatsApp(context) },
             modifier = Modifier.fillMaxWidth()) {
             Text("+256 762 306 675 — Derycode Support")
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = {
+            try {
+                context.startActivity(android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://derycode.publicvm.com")))
+            } catch (_: Exception) {}
+        }, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Default.Language, null, Modifier.size(16.dp))
+            Text("  derycode.publicvm.com", fontSize = 13.sp)
         }
     }
 }

@@ -104,28 +104,29 @@ private object LicenseKeys {
     private const val ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
     private val ymd = SimpleDateFormat("yyyyMMdd", Locale.US)
 
-    fun generate(plan: PlanTier, expiresAtMillis: Long): String {
-        val expStr = ymd.format(java.util.Date(expiresAtMillis))
-        val payload = plan.code + expStr
+    fun generate(plan: PlanTier, days: Int): String {
+        val daysStr = String.format(Locale.US, "%04d", days)
+        val payload = plan.code + daysStr
         val sig = sign(payload).take(8)
         val raw = payload + sig
         return "DERY-" + raw.chunked(4).joinToString("-")
     }
 
-    /** Returns (plan, expiresAtMillis) if the code is authentic, else null. */
-    fun verify(rawInput: String): Pair<PlanTier, Long>? {
+    /** Returns (plan, daysOfValidity) if the code is authentic, else null.
+     *  The countdown starts when the SHOP ACTIVATES the code — not when it
+     *  was generated — so a paying shop always gets its full period. */
+    fun verify(rawInput: String): Pair<PlanTier, Int>? {
         val clean = rawInput.trim().uppercase(Locale.US)
             .removePrefix("DERY-").replace("-", "").replace(" ", "")
-        if (clean.length < 18) return null
+        if (clean.length < 14) return null
         val code = clean.substring(0, 2)
-        val expStr = clean.substring(2, 10)
-        val sig = clean.substring(10, 18)
+        val daysStr = clean.substring(2, 6)
+        val sig = clean.substring(6, 14)
         val plan = PlanTier.byCode(code) ?: return null
-        if (sign(code + expStr).take(8) != sig) return null
-        val expiresAt = try {
-            ymd.parse(expStr)?.time ?: return null
-        } catch (e: Exception) { return null }
-        return plan to expiresAt
+        if (sign(code + daysStr).take(8) != sig) return null
+        val days = daysStr.toIntOrNull() ?: return null
+        if (days < 1 || days > 3650) return null
+        return plan to days
     }
 
     private fun sign(payload: String): String {
@@ -208,8 +209,10 @@ object LicenseManager {
     /** Verifies and stores an activation code the shop received from DeryCode. */
     fun activate(context: Context, rawCode: String): ActivationResult {
         val parsed = LicenseKeys.verify(rawCode) ?: return ActivationResult.InvalidCode
-        val (plan, expiresAt) = parsed
-        if (expiresAt < System.currentTimeMillis()) return ActivationResult.Expired
+        val (plan, days) = parsed
+        // The validity countdown starts NOW — at activation, immediately.
+        val activatedAt = System.currentTimeMillis()
+        val expiresAt = activatedAt + days * 24L * 60 * 60 * 1000
         prefs(context).edit()
             .putString(K_PLAN, plan.code)
             .putString(K_KEY, rawCode.trim().uppercase(Locale.US))
@@ -224,8 +227,7 @@ object LicenseManager {
 
     /** For DeryCode/Wema's own use — generates a real code to send a paying shop. */
     fun generateCodeForSupport(plan: PlanTier, months: Int): String {
-        val cal = Calendar.getInstance()
-        cal.add(Calendar.MONTH, months)
-        return LicenseKeys.generate(plan, cal.timeInMillis)
+        // days are counted from the moment the shop activates the code
+        return LicenseKeys.generate(plan, months * 30)
     }
 }

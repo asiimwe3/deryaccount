@@ -40,6 +40,7 @@ class AccountingRepo(private val db: AppDatabase) {
             Account("acc-utilities","5230","Water & Electricity (UEL)","EXPENSE", sortOrder = 15),
             Account("acc-airtime","5240","Airtime & Data", "EXPENSE", sortOrder = 16),
             Account("acc-sundry", "5900", "Sundry / Other Expenses","EXPENSE", sortOrder = 17),
+            Account("acc-writeoff","5910","Stock Losses (Damage & Shrinkage)","EXPENSE", sortOrder = 17),
             Account("acc-assets", "1300", "Fixed Assets",  "ASSET", sortOrder = 5),
             Account("acc-accdepr","1350", "Accumulated Depreciation", "ASSET", sortOrder = 5),
             Account("acc-vatout", "2500", "VAT Payable",   "LIABILITY", sortOrder = 6),
@@ -59,6 +60,7 @@ class AccountingRepo(private val db: AppDatabase) {
         val PURCHASES = "acc-purchases"
         val COGS = "acc-cogs"
         val SUNDAY_RUN = "acc-sundry"
+        val WRITEOFF = "acc-writeoff"
     }
 
     /**
@@ -177,7 +179,7 @@ class AccountingRepo(private val db: AppDatabase) {
                 debits = listOf(STOCK to deltaValue), credits = listOf(CASH to deltaValue))
         else if (deltaValue < 0)
             post(particulars = "Stock reduction ($note)", source = "STOCK",
-                debits = listOf(SUNDAY_RUN to -deltaValue), credits = listOf(STOCK to -deltaValue))
+                debits = listOf(WRITEOFF to -deltaValue), credits = listOf(STOCK to -deltaValue))
     }
 
     /**
@@ -203,7 +205,7 @@ class AccountingRepo(private val db: AppDatabase) {
                     debits = listOf(STOCK to deltaValue), credits = listOf(REVAL to deltaValue))
             deltaValue < 0 ->
                 post(particulars = "Stock reduction ($note)", source = "STOCK",
-                    debits = listOf(SUNDAY_RUN to -deltaValue), credits = listOf(STOCK to -deltaValue))
+                    debits = listOf(WRITEOFF to -deltaValue), credits = listOf(STOCK to -deltaValue))
         }
     }
 
@@ -211,7 +213,7 @@ class AccountingRepo(private val db: AppDatabase) {
     suspend fun postStockWriteOff(value: Double, note: String) {
         if (value > 0)
             post(particulars = "Stock write-off ($note)", source = "STOCK",
-                debits = listOf(SUNDAY_RUN to value), credits = listOf(STOCK to value))
+                debits = listOf(WRITEOFF to value), credits = listOf(STOCK to value))
     }
 
     /**
@@ -228,7 +230,7 @@ class AccountingRepo(private val db: AppDatabase) {
                     debits = listOf(STOCK to deltaValue), credits = listOf(REVAL to deltaValue))
             deltaQty < 0 && deltaValue < 0 ->
                 post(particulars = "Stock shrinkage in count ($note)", source = "STOCK",
-                    debits = listOf(SUNDAY_RUN to -deltaValue), credits = listOf(STOCK to -deltaValue))
+                    debits = listOf(WRITEOFF to -deltaValue), credits = listOf(STOCK to -deltaValue))
         }
     }
 
@@ -369,7 +371,7 @@ class AccountingRepo(private val db: AppDatabase) {
         }.map { it.name to -it.netBalance }
         val operatingExpenses = tb.filter {
             it.type == "EXPENSE" &&
-            it.accountId != COGS && it.accountId != PURCHASES &&
+            it.accountId != COGS && it.accountId != PURCHASES && it.accountId != WRITEOFF &&
             it.netBalance != 0.0
         }.map { it.name to it.netBalance }
         return IncomeStatement(

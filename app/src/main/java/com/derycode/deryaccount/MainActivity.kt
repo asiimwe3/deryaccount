@@ -212,8 +212,7 @@ fun DeryAccountApp() {
             add(Triple("expenses", "Expenses", Icons.Default.Payments))
             add(Triple("customers", "Customers", Icons.Default.People))
             add(Triple("shift", "Shift / Z-Report", Icons.Default.SwapHoriz))
-            add(Triple("reports", "Reports", Icons.Default.BarChart))
-            add(Triple("salescharts", "Analytics", Icons.Default.Timeline))
+            add(Triple("reports", "Reports & Analytics", Icons.Default.BarChart))
             add(Triple("subscription", "Subscription", Icons.Default.Verified))
             add(Triple("backup", "Backup & Export", Icons.Default.CloudUpload))
         }
@@ -346,7 +345,8 @@ fun DeryAccountApp() {
                 InventoryScreen(db, branchId)
             }
             composable("reports") {
-                ReportsScreen(db, branchId)
+                com.derycode.deryaccount.ui.reports.ReportsScreen(db, branchId,
+                    onNavigate = { r -> navController.navigate(r) { launchSingleTop = true } })
             }
             composable("expenses") {
                 ExpensesScreen(db, branchId, userId)
