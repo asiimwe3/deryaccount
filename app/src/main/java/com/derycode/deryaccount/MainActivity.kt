@@ -163,6 +163,17 @@ fun DeryAccountApp() {
         onDispose { syncEngine.stopPeriodic() }
     }
 
+    // ---- branded launch splash (cosmetic, ~1.5s) while session/onboarding resolve ----
+    var splashDone by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1500)
+        splashDone = true
+    }
+    if (!splashDone) {
+        com.derycode.deryaccount.ui.DeryAccountSplashScreen()
+        return
+    }
+
     val navController = rememberNavController()
     val backStack = navController.currentBackStackEntryAsState().value
     val currentRoute = backStack?.destination?.route

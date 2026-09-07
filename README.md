@@ -346,3 +346,9 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   icon, and splash screen now use the official navy DeryAccount "D" logo.
 - Prepared for third-party store distribution (Uptodown, APKPure, PalmStore):
   512x512 store icon, description text, and this APK build.
+
+## v1.0.4 — Branded launch splash
+- New animated splash screen on app launch, matching the official mockup:
+  navy gradient, tagline, D-mark logo, DeryAccount wordmark, Sales/Purchases/
+  Stock/Reports feature strip, "Track • Manage • Grow", loading bar and a
+  green wave footer. Shows for ~1.5s while the app loads in the background.
