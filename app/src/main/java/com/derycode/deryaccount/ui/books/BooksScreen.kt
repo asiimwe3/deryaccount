@@ -484,7 +484,12 @@ private fun IncomeStatementTab(accounting: AccountingRepo, context: android.cont
     var openingInput by remember { mutableStateOf("") }
     var openingMsg by remember { mutableStateOf<String?>(null) }
     fun periodFrom(): String = when (period) {
-        1 -> java.time.LocalDate.now().withDayOfYear(1).toString() + "T00:00:00.000Z"
+        1 -> { // Jan 1 of this year — API-24 safe (no java.time without desugaring)
+            val cal = java.util.Calendar.getInstance()
+            cal.set(java.util.Calendar.DAY_OF_YEAR, 1)
+            val ymd = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            ymd.format(cal.time) + "T00:00:00.000Z"
+        }
         2 -> "1970-01-01T00:00:00.000Z"
         else -> monthStart()
     }
