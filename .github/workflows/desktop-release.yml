@@ -31,9 +31,19 @@ jobs:
           gradle-version: '8.9'
 
       - name: WiX Toolset (needed by jpackage for MSI)
+        shell: pwsh
         run: |
-          choco install wixtoolset --version=3.14.1 -y --no-progress
-          echo "C:\Program Files (x86)\WiX Toolset v3.14\bin" >> $env:GITHUB_PATH
+          # windows-latest usually ships WiX 3 already; only install when it is missing.
+          $wix = Get-ChildItem "C:\Program Files (x86)" -Filter "WiX Toolset*" -Directory -ErrorAction SilentlyContinue |
+                 Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $wix) {
+            choco install wixtoolset -y --no-progress
+            $wix = Get-ChildItem "C:\Program Files (x86)" -Filter "WiX Toolset*" -Directory |
+                   Sort-Object Name -Descending | Select-Object -First 1
+          }
+          if (-not $wix) { throw "WiX Toolset not found" }
+          Write-Host "Using $($wix.FullName)"
+          "$($wix.FullName)\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Test the money flow
         working-directory: desktop
