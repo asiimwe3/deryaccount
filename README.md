@@ -374,3 +374,20 @@ entered price x qty. The Trial Balance and Balance Sheet stay complete.
   receipt into a promotion for the app.
 - New "Share DeryAccount" button on the More screen shares the download link
   and website via WhatsApp or any app.
+
+## Desktop edition (Windows)
+
+`desktop/` is the Windows build of DeryAccount: the same shop, stock, customers,
+suppliers and double-entry books as the Android app, packaged as an MSI installer
+and fully offline in a single SQLite file.
+
+```
+cd desktop
+gradle run          # launch
+gradle test         # 11 money-flow tests
+gradle packageMsi   # Windows installer (on Windows)
+```
+
+Screenshots of every screen are in `desktop/docs/screenshots/`, and the details
+are in `desktop/README.md`. Pushing a `desktop-v*` tag makes the
+`Desktop installer (Windows)` workflow build and publish the MSI and EXE.

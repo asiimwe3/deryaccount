@@ -1,0 +1,67 @@
+name: Desktop installer (Windows)
+
+# Builds the DeryAccount desktop MSI and EXE on a real Windows runner and
+# publishes both as release assets. Tag with: desktop-v1.0.0
+# The installer is what shops download and double-click.
+
+on:
+  push:
+    tags: ['desktop-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: WiX Toolset (needed by jpackage for MSI)
+        run: |
+          choco install wixtoolset --version=3.14.1 -y --no-progress
+          echo "C:\Program Files (x86)\WiX Toolset v3.14\bin" >> $env:GITHUB_PATH
+
+      - name: Test the money flow
+        working-directory: desktop
+        run: gradle test --console=plain
+
+      - name: Build MSI and EXE
+        working-directory: desktop
+        run: gradle packageMsi packageExe --console=plain
+
+      - name: Collect installers
+        run: |
+          Get-ChildItem -Recurse desktop\build\compose\binaries\main | Select-Object FullName, Length
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          name: DeryAccount Desktop ${{ github.ref_name }}
+          body: |
+            DeryAccount for Windows — offline books of account, stock and POS.
+
+            Download `DeryAccount-1.0.0.msi`, double-click, then sign in with owner / 1234
+            and change the PIN in Settings.
+
+            Everything runs on the computer: no internet needed. Back up daily from
+            Data & backup (the whole business is one file).
+          files: |
+            desktop/build/compose/binaries/main/msi/*.msi
+            desktop/build/compose/binaries/main/exe/*.exe
+            desktop/build/compose/binaries/main/msi/*.wxs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
