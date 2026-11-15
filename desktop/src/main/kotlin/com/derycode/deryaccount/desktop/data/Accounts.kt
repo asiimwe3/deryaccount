@@ -21,9 +21,13 @@ object Accounts {
         AccountDef("acc-accdepr", "1350", "Accumulated Depreciation", "ASSET", sortOrder = 7),
         AccountDef("acc-creditors", "2000", "Creditors (Payables)", "LIABILITY", sortOrder = 8),
         AccountDef("acc-vatout", "2500", "VAT Payable", "LIABILITY", sortOrder = 9),
+        AccountDef("acc-deposits", "2100", "Guest Deposits (Held)", "LIABILITY", sortOrder = 9),
         AccountDef("acc-capital", "3000", "Capital", "EQUITY", sortOrder = 10),
         AccountDef("acc-drawings", "3100", "Drawings", "EQUITY", sortOrder = 11),
         AccountDef("acc-sales", "4000", "Sales / Revenue", "INCOME", sortOrder = 12),
+        AccountDef("acc-rooms", "4010", "Room Revenue (Accommodation)", "INCOME", sortOrder = 12),
+        AccountDef("acc-fb", "4020", "Restaurant & Bar Revenue", "INCOME", sortOrder = 12),
+        AccountDef("acc-guestrev", "4030", "Other Guest Services", "INCOME", sortOrder = 12),
         AccountDef("acc-disc", "4100", "Sales Discounts", "INCOME", sortOrder = 13),
         AccountDef("acc-returns", "4150", "Sales Returns", "INCOME", sortOrder = 14),
         AccountDef("acc-reval", "4900", "Stock Revaluation Gain", "INCOME", sortOrder = 15),
@@ -48,6 +52,10 @@ object Accounts {
     const val ACC_DEPR = "acc-accdepr"
     const val CREDITORS = "acc-creditors"
     const val VAT_OUT = "acc-vatout"
+    const val GUEST_DEPOSITS = "acc-deposits"
+    const val ROOM_REVENUE = "acc-rooms"
+    const val FB_REVENUE = "acc-fb"
+    const val GUEST_REVENUE = "acc-guestrev"
     const val CAPITAL = "acc-capital"
     const val SALES = "acc-sales"
     const val SALES_DISCOUNT = "acc-disc"

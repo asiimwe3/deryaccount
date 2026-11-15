@@ -296,6 +296,30 @@ private val DDL: List<String> = listOf(
             "batch_no TEXT, expiry_date TEXT, qty REAL, branch_id TEXT, note TEXT, created_at TEXT)",
         "CREATE TABLE IF NOT EXISTS serials (id TEXT PRIMARY KEY, product_id TEXT, product_name TEXT, " +
             "serial TEXT, status TEXT DEFAULT 'IN_STOCK', sold_at TEXT, branch_id TEXT, created_at TEXT)",
+        // ── Hotel & accommodation ────────────────────────────────────────────
+        "CREATE TABLE IF NOT EXISTS room_types (id TEXT PRIMARY KEY, name TEXT, base_rate REAL DEFAULT 0, " +
+            "capacity INTEGER DEFAULT 2, beds TEXT, description TEXT, tax_rate REAL DEFAULT 0, created_at TEXT)",
+        "CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, number TEXT, room_type_id TEXT, floor TEXT, " +
+            "status TEXT DEFAULT 'VACANT_CLEAN', rate_override REAL DEFAULT 0, note TEXT, " +
+            "branch_id TEXT, is_active INTEGER DEFAULT 1, created_at TEXT, updated_at TEXT)",
+        "CREATE TABLE IF NOT EXISTS guests (id TEXT PRIMARY KEY, name TEXT, phone TEXT, email TEXT, " +
+            "id_number TEXT, nationality TEXT, address TEXT, notes TEXT, created_at TEXT, updated_at TEXT)",
+        "CREATE TABLE IF NOT EXISTS bookings (id TEXT PRIMARY KEY, ref_no TEXT, guest_id TEXT, guest_name TEXT, " +
+            "guest_phone TEXT, room_id TEXT, room_type_id TEXT, check_in_date TEXT, check_out_date TEXT, " +
+            "adults INTEGER DEFAULT 1, children INTEGER DEFAULT 0, nights INTEGER DEFAULT 1, rate REAL DEFAULT 0, " +
+            "status TEXT DEFAULT 'BOOKED', source TEXT DEFAULT 'WALK_IN', notes TEXT, " +
+            "invoice_total REAL DEFAULT 0, paid_total REAL DEFAULT 0, checked_in_at TEXT, checked_out_at TEXT, " +
+            "user_id TEXT, branch_id TEXT, created_at TEXT, updated_at TEXT)",
+        "CREATE TABLE IF NOT EXISTS folio_charges (id TEXT PRIMARY KEY, booking_id TEXT, kind TEXT, " +
+            "description TEXT, qty REAL DEFAULT 1, unit_price REAL DEFAULT 0, amount REAL DEFAULT 0, " +
+            "tax_amount REAL DEFAULT 0, charge_date TEXT, posted_at TEXT, posted_by TEXT, created_at TEXT)",
+        "CREATE TABLE IF NOT EXISTS hotel_payments (id TEXT PRIMARY KEY, booking_id TEXT, amount REAL, " +
+            "method TEXT, reference TEXT, note TEXT, paid_at TEXT, user_id TEXT, created_at TEXT)",
+        "CREATE TABLE IF NOT EXISTS housekeeping_tasks (id TEXT PRIMARY KEY, room_id TEXT, kind TEXT, " +
+            "note TEXT, status TEXT DEFAULT 'OPEN', assigned_to TEXT, created_at TEXT, done_at TEXT)",
+        "CREATE INDEX IF NOT EXISTS idx_bookings_dates ON bookings(check_in_date, check_out_date)",
+        "CREATE INDEX IF NOT EXISTS idx_bookings_room ON bookings(room_id)",
+        "CREATE INDEX IF NOT EXISTS idx_charges_booking ON folio_charges(booking_id)",
         "CREATE INDEX IF NOT EXISTS idx_sales_sold ON sales(sold_at)",
         "CREATE INDEX IF NOT EXISTS idx_items_sale ON sale_items(sale_id)",
         "CREATE INDEX IF NOT EXISTS idx_lines_entry ON journal_lines(entry_id)",

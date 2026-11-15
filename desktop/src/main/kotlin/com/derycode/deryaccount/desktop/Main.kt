@@ -42,6 +42,12 @@ val navItems = listOf(
     NavItem("customers", "Customers", Icons.Default.People, "SALES"),
     NavItem("shift", "Shift & cash", Icons.Default.Payments, "SALES"),
 
+    NavItem("frontdesk", "Front desk", Icons.Default.Hotel, "HOTEL"),
+    NavItem("rooms", "Rooms & rates", Icons.Default.MeetingRoom, "HOTEL"),
+    NavItem("bookings", "Bookings", Icons.Default.EventAvailable, "HOTEL"),
+    NavItem("guests", "Guests", Icons.Default.PersonSearch, "HOTEL"),
+    NavItem("hotelreports", "Hotel reports", Icons.Default.BarChart, "HOTEL"),
+
     NavItem("stock", "Stock & inventory", Icons.Default.Inventory2, "STOCK"),
     NavItem("purchases", "Purchases", Icons.Default.ShoppingCart, "STOCK"),
 
@@ -93,6 +99,11 @@ fun AppShell(app: AppState) {
                     "sales" -> SalesScreen(app)
                     "customers" -> CustomersScreen(app)
                     "shift" -> ShiftScreen(app)
+                    "frontdesk" -> FrontDeskScreen(app)
+                    "rooms" -> RoomsScreen(app)
+                    "bookings" -> BookingsScreen(app)
+                    "guests" -> GuestsScreen(app)
+                    "hotelreports" -> HotelReportsScreen(app)
                     "stock" -> StockScreen(app)
                     "purchases" -> PurchasesScreen(app)
                     "expenses" -> ExpensesScreen(app)

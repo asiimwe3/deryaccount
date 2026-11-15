@@ -62,10 +62,11 @@ jobs:
         with:
           name: DeryAccount Desktop ${{ github.ref_name }}
           body: |
-            DeryAccount for Windows — offline books of account, stock and POS.
+            DeryAccount for Windows — offline books of account, stock, POS and a full
+            hotel front desk.
 
-            Download `DeryAccount-1.0.0.msi`, double-click, then sign in with owner / 1234
-            and change the PIN in Settings.
+            Download the `.msi` (or the portable `.exe`), double-click, then sign in with
+            owner / 1234 and change the PIN in Settings.
 
             Everything runs on the computer: no internet needed. Back up daily from
             Data & backup (the whole business is one file).

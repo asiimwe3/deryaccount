@@ -28,6 +28,30 @@ gradle shots -PshotsDir=out    # render every screen to PNG, no window needed
 | Shift & cash | Open a shift with a float, cash in/out, Z-report, close with counted cash and a variance |
 | Data | CSV export of any table, CSV import, backup and restore, sample shop |
 
+### Hotel & accommodation
+A working front desk for a lodge, guest house or hotel, sharing the same books:
+
+- **Front desk** — today's arrivals, guests in house and departures, with one-click check-in and check-out
+- **Rooms & rates** — room types (Single, Double, Twin, Suite) with their own nightly rate and VAT, plus every room number with its condition (clean, dirty, occupied, out of order)
+- **Bookings** — the full register: reserve without arriving, walk-in and check in at once, extend a stay, move a guest to another room, cancel, or mark a no-show
+- **Folios** — one bill per guest: room nights posted automatically, plus restaurant, bar, laundry and extras charged to the room
+- **Guests** — phone, ID, nationality and every past stay
+- **Housekeeping** — cleaning and maintenance jobs, with a room marked out of order until the job is done
+- **Hotel reports** — occupancy, ADR (average daily rate), RevPAR, revenue by department, and a night-by-night breakdown
+
+How the hotel money moves, and why it stays honest:
+
+| Event | What the books do |
+|---|---|
+| Deposit or part payment | Dr cash / mobile money · Cr *Guest Deposits Held* (a liability, never income) |
+| Guest checks in | Room charges land on the folio only — no revenue yet |
+| Guest checks out | Dr guest deposits + debtors + discounts · Cr room revenue, F&B revenue, other services, VAT |
+| Company account | The unpaid balance goes to debtors and is collected like any other customer |
+| Cancellation | The deposit is refunded (or kept as income for a no-show) and nothing is left owing |
+
+A room can never be sold twice for the same night, and leaving early drops the
+unused nights from the bill.
+
 ## How the money works
 
 Every sale is one transaction: the bill, its lines, the stock movement, the
@@ -38,7 +62,9 @@ valued at cost, so the trial balance always agrees with the shelf.
 
 `gradle test` proves it: the suite covers a cash sale, a credit sale and its
 payment, a supplier purchase, VAT, a return, an expense, capital, depreciation,
-stock valuation, and the sample shop — and asserts the balance sheet balances
+stock valuation, the sample shop, and twelve hotel cases (deposit held as a
+liability, check-out revenue, early check-out, extensions, refunds, no-shows,
+double-booking and occupancy maths) — and asserts the balance sheet balances
 after every one of them.
 
 ## Signing in
@@ -53,6 +79,9 @@ Settings → Users.
 elsewhere. Data & backup copies it anywhere you like; Restore loads it back.
 
 ## Screenshots
+
+![Front desk](docs/screenshots/frontdesk.png)
+![Rooms and rates](docs/screenshots/rooms.png)
 
 `docs/screenshots/` holds a render of every main screen, produced by the app
 itself (`gradle shots`) with the sample shop loaded.

@@ -247,6 +247,89 @@ class AdminOps(private val repo: Repo) {
 
     // ── Sample data ──────────────────────────────────────────────────────────
     /** Optional demo shop. Runs through the real posting engine, so the books stay true. */
+    /**
+     * A working guest house on top of the shop: room types, rooms, guests and a
+     * few stays (closed, in house and arriving) so every hotel screen has life.
+     */
+    fun loadHotelSample(quiet: Boolean = false) {
+        if (db.count("rooms") > 0) {
+            if (quiet) return
+            error("This business already has rooms — the hotel demo is only for an empty room list")
+        }
+        val hotel = Hotel(repo)
+        val today = Clock.today()
+        val types = listOf(
+            Triple("Single", 80_000.0, 1) to "1 single",
+            Triple("Double", 120_000.0, 2) to "1 double",
+            Triple("Twin", 130_000.0, 2) to "2 singles",
+            Triple("Suite", 220_000.0, 3) to "1 king + sofa"
+        ).associate { (spec, beds) ->
+            spec.first to hotel.saveRoomType(null, spec.first, spec.second, spec.third, beds, taxRate = 18.0)
+        }
+
+        val numbers = listOf("101" to "Single", "102" to "Double", "103" to "Double", "104" to "Twin",
+                             "201" to "Suite", "202" to "Double", "203" to "Twin", "204" to "Single")
+        val roomIds = numbers.map { (number, typeName) ->
+            number to hotel.saveRoom(null, number, types[typeName], number.take(1), Hotel.VACANT_CLEAN, "")
+        }.toMap()
+
+        data class DemoGuest(val id: String, val name: String, val phone: String)
+        val guestList = listOf(
+            Triple("Aisha Kabahenda", "0772 100 200", "1"),
+            Triple("John Mugisa", "0703 400 500", "0"),
+            Triple("Ministry of Health", "0414 000 000", "X"),
+            Triple("Grace Atuhaire", "0752 700 800", "1"),
+            Triple("Peter Baguma", "0779 900 100", "0")
+        )
+        val guests = guestList.map { (n, phone, idNo) ->
+            DemoGuest(hotel.saveGuest(null, n, phone, idNumber = idNo), n, phone)
+        }
+        fun guestByName(name: String): DemoGuest = guests.first { it.name == name }
+
+        // Closed stays over the last few days: revenue already recognised.
+        listOf("101", "104", "203", "102").forEachIndexed { i, roomNo ->
+            val inDate = Hotel.addDays(today, -(6 - i).toLong())
+            val outDate = Hotel.addDays(inDate, 2)
+            val g = guests[i]
+            runCatching {
+                val id = hotel.createBooking(
+                    g.name, g.phone, roomIds[roomNo]!!, inDate, outDate,
+                    adults = 2, source = "PHONE", guestId = g.id,
+                    deposit = 60_000.0, depositMethod = if (i % 2 == 0) "CASH" else "MTN_MOMO"
+                )
+                hotel.checkIn(id)
+                val bill = hotel.folio(id)
+                hotel.checkOut(id, extraPayment = bill.balance, method = "CASH")
+            }
+        }
+
+        // Guests in house right now, one with a restaurant bill on the folio.
+        listOf("102" to "John Mugisa", "201" to "Ministry of Health").forEachIndexed { i, (roomNo, name) ->
+            val g = guestByName(name)
+            val id = hotel.createBooking(
+                g.name, g.phone, roomIds[roomNo]!!,
+                Hotel.addDays(today, -1), Hotel.addDays(today, 2),
+                adults = 2, source = if (i == 1) "CORPORATE" else "WALK_IN",
+                guestId = g.id, deposit = 100_000.0, depositMethod = "CASH"
+            )
+            hotel.checkIn(id)
+            hotel.addCharge(id, "RESTAURANT", "Dinner for two", 2.0, 18_000.0, taxRate = 18.0)
+            hotel.postPayment(id, 40_000.0, "AIRTEL_MONEY")
+        }
+
+        // Arrivals for later today and tomorrow, so the front desk has work to do.
+        listOf("103" to "Grace Atuhaire", "202" to "Peter Baguma").forEachIndexed { i, (roomNo, name) ->
+            val g = guestByName(name)
+            hotel.createBooking(
+                g.name, g.phone, roomIds[roomNo]!!,
+                Hotel.addDays(today, i.toLong()), Hotel.addDays(today, i + 2L),
+                adults = 2, source = "PHONE", guestId = g.id,
+                deposit = 50_000.0, depositMethod = "MTN_MOMO"
+            )
+        }
+        hotel.raiseTask(roomIds["204"]!!, "MAINTENANCE", "Air conditioner leaking")
+    }
+
     fun loadSampleData() {
         if (db.count("products") > 0) error("This business already has products — sample data is only for an empty file")
         val rnd = Random(7)
@@ -370,6 +453,7 @@ class AdminOps(private val repo: Repo) {
         repo.recordExpense("AIRTIME", 20_000.0, "MTN_MOMO", "Data and airtime")
         repo.addStock("p-0", 60.0, 3800.0, "Restock sugar", supplierId = "s-0", paidHow = "CREDIT")
         repo.addStock("p-9", 30.0, 32000.0, "Cement delivery", supplierId = "s-1", paidHow = "CASH")
+        loadHotelSample(quiet = true)
         db.meta("sample_data", "1")
     }
 }

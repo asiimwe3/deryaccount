@@ -66,6 +66,27 @@ fun DashboardScreen(app: AppState) {
             KpiCard("Month profit", Fmt.money(kpis.monthProfit), "sales less cost and expenses", Da.Blue, Modifier.weight(1f))
         }
 
+        // The hotel wing, only when the business actually has rooms.
+        if (app.hotel.hasRooms()) {
+            val hk = app.hotel.kpis()
+            Spacer(Modifier.height(12.dp))
+            CardBox(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Hotel, null, tint = Da.Blue, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Front desk today", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Da.Text, modifier = Modifier.weight(1f))
+                    Btn("Open front desk", { app.go("frontdesk") }, Icons.Default.ArrowForward, BtnKind.GHOST)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    KpiCard("Occupancy", Fmt.pct(hk.occupancyPct), "${hk.occupied} of ${hk.rooms} rooms let", Da.Green, Modifier.weight(1f))
+                    KpiCard("Arrivals", "${hk.arrivals}", "expected today", Da.Amber, Modifier.weight(1f))
+                    KpiCard("Departures", "${hk.departures}", "checking out", Da.Blue, Modifier.weight(1f))
+                    KpiCard("Guests in house", "${hk.inHouseGuests}", "${hk.dirty} rooms to clean", Da.Purple, Modifier.weight(1f))
+                    KpiCard("Room revenue", Fmt.money(hk.revenueThisMonth), "this month", Da.Green, Modifier.weight(1f))
+                }
+            }
+        }
+
         Spacer(Modifier.height(16.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
             CardBox(Modifier.weight(2f)) {

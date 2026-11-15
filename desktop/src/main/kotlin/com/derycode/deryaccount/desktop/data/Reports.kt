@@ -157,6 +157,9 @@ class Reports(private val repo: Repo) {
 
         val creditors = bal(Accounts.CREDITORS); if (creditors != 0.0) liabilities.add(BsRow("Creditors (Payables)", -creditors))
         val vat = bal(Accounts.VAT_OUT); if (vat != 0.0) liabilities.add(BsRow("VAT Payable", -vat))
+        // Hotel deposits: money held for guests, refundable until they check out.
+        val deposits = bal(Accounts.GUEST_DEPOSITS)
+        if (deposits != 0.0) liabilities.add(BsRow("Guest Deposits Held", -deposits))
 
         val capital = bal(Accounts.CAPITAL); if (capital != 0.0) equity.add(BsRow("Capital", -capital))
         val drawings = bal("acc-drawings"); if (drawings != 0.0) equity.add(BsRow("Drawings", -drawings))

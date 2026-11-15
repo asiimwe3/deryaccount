@@ -29,7 +29,8 @@ fun main(args: Array<String>) {
     app.user = owner
 
     val screens = listOf(
-        "dashboard", "pos", "sales", "stock", "purchases", "customers",
+        "dashboard", "frontdesk", "rooms", "bookings", "guests", "hotelreports",
+        "pos", "sales", "stock", "purchases", "customers",
         "books", "reports", "admin", "data"
     )
 
