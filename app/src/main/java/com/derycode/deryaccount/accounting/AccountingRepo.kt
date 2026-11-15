@@ -44,6 +44,11 @@ class AccountingRepo(private val db: AppDatabase) {
             Account("acc-assets", "1300", "Fixed Assets",  "ASSET", sortOrder = 5),
             Account("acc-accdepr","1350", "Accumulated Depreciation", "ASSET", sortOrder = 5),
             Account("acc-vatout", "2500", "VAT Payable",   "LIABILITY", sortOrder = 6),
+            // Hotel & accommodation
+            Account("acc-deposits","2100", "Guest Deposits (Held)", "LIABILITY", sortOrder = 6),
+            Account("acc-rooms",  "4010", "Room Revenue (Accommodation)", "INCOME", sortOrder = 9),
+            Account("acc-fb",     "4020", "Restaurant & Bar Revenue", "INCOME", sortOrder = 9),
+            Account("acc-guestrev","4030","Other Guest Services", "INCOME", sortOrder = 9),
             Account("acc-depexp","5310", "Depreciation",   "EXPENSE", sortOrder = 13)
         )
         val CASH = "acc-cash"
@@ -61,6 +66,19 @@ class AccountingRepo(private val db: AppDatabase) {
         val COGS = "acc-cogs"
         val SUNDAY_RUN = "acc-sundry"
         val WRITEOFF = "acc-writeoff"
+        val GUEST_DEPOSITS = "acc-deposits"
+        val ROOM_REVENUE = "acc-rooms"
+        val FB_REVENUE = "acc-fb"
+        val GUEST_REVENUE = "acc-guestrev"
+        val VAT_OUT = "acc-vatout"
+
+        /** Payment method → the account the money lands in. */
+        fun accountForMethod(method: String): String = when (method.uppercase()) {
+            "MTN_MOMO", "AIRTEL_MONEY", "BANK", "MOMO", "CARD" -> BANK
+            "CREDIT" -> DEBTORS
+            "PETTY" -> PETTY
+            else -> CASH
+        }
     }
 
     /**

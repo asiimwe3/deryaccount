@@ -178,6 +178,11 @@ fun HomeScreen(
             QuickAction(Modifier.weight(1f), "Add Stock", Icons.Default.Inventory2, DaBlue) { onNavigate("inventory") }
             QuickAction(Modifier.weight(1f), "Cash Book", Icons.Default.MenuBook, DaAmber) { onNavigate("books") }
         }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            QuickAction(Modifier.weight(1f), "Hotel desk", Icons.Default.Hotel, DaBlue) { onNavigate("hotel") }
+            QuickAction(Modifier.weight(1f), "Reports", Icons.Default.Insights, DaGreen) { onNavigate("reports") }
+        }
 
         Spacer(Modifier.height(18.dp))
         Text("Books", fontWeight = FontWeight.Bold, color = DaTextPrimary, fontSize = 14.sp)

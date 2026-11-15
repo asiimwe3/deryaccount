@@ -27,9 +27,11 @@ import com.derycode.deryaccount.data.local.entity.*
         PurchaseOrder::class, PurchaseOrderItem::class,
         FixedAsset::class, Employee::class, Payslip::class,
         Budget::class, BankLine::class,
-        Batch::class, SerialNumber::class
+        Batch::class, SerialNumber::class,
+        RoomType::class, HotelRoom::class, Guest::class, Booking::class,
+        FolioCharge::class, HotelPayment::class, HousekeepingTask::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -65,6 +67,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun bankLineDao(): BankLineDao
     abstract fun batchDao(): BatchDao
     abstract fun serialDao(): SerialDao
+    abstract fun hotelDao(): HotelDao
 
     companion object {
         /** v2 → v3: add products.isFavourite + held_sales (Hold Sale). */
@@ -297,6 +300,100 @@ abstract class AppDatabase : RoomDatabase() {
          * next open (fresh app start) we swap it in, atomically replacing
          * the live DB. Runs BEFORE Room opens any file.
          */
+
+        /** v8 → v9: hotel & accommodation — rooms, guests, bookings, folios, housekeeping. */
+        private val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS room_types (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        baseRate REAL NOT NULL,
+                        capacity INTEGER NOT NULL,
+                        beds TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        taxRate REAL NOT NULL,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS hotel_rooms (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        number TEXT NOT NULL,
+                        roomTypeId TEXT NOT NULL,
+                        floor TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        rateOverride REAL NOT NULL,
+                        note TEXT NOT NULL,
+                        branchId TEXT NOT NULL,
+                        isActive INTEGER NOT NULL,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_hotel_rooms_number ON hotel_rooms(number)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_hotel_rooms_roomTypeId ON hotel_rooms(roomTypeId)")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS guests (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        name TEXT NOT NULL, phone TEXT NOT NULL, email TEXT NOT NULL,
+                        idNumber TEXT NOT NULL, nationality TEXT NOT NULL,
+                        address TEXT NOT NULL, notes TEXT NOT NULL,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_guests_phone ON guests(phone)")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS bookings (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        refNo TEXT NOT NULL,
+                        guestId TEXT, guestName TEXT NOT NULL, guestPhone TEXT NOT NULL,
+                        roomId TEXT NOT NULL, roomTypeId TEXT,
+                        checkInDate TEXT NOT NULL, checkOutDate TEXT NOT NULL,
+                        adults INTEGER NOT NULL, children INTEGER NOT NULL,
+                        nights INTEGER NOT NULL, rate REAL NOT NULL,
+                        status TEXT NOT NULL, source TEXT NOT NULL, notes TEXT NOT NULL,
+                        invoiceTotal REAL NOT NULL, paidTotal REAL NOT NULL,
+                        checkedInAt TEXT, checkedOutAt TEXT,
+                        userId TEXT NOT NULL, branchId TEXT NOT NULL,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_bookings_checkInDate ON bookings(checkInDate)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_bookings_roomId ON bookings(roomId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_bookings_status ON bookings(status)")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS folio_charges (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        bookingId TEXT NOT NULL, kind TEXT NOT NULL, description TEXT NOT NULL,
+                        qty REAL NOT NULL, unitPrice REAL NOT NULL,
+                        amount REAL NOT NULL, taxAmount REAL NOT NULL,
+                        chargeDate TEXT NOT NULL, postedAt TEXT NOT NULL, postedBy TEXT NOT NULL,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_folio_charges_bookingId ON folio_charges(bookingId)")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS hotel_payments (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        bookingId TEXT NOT NULL, amount REAL NOT NULL, method TEXT NOT NULL,
+                        reference TEXT NOT NULL, note TEXT NOT NULL, paidAt TEXT NOT NULL,
+                        userId TEXT NOT NULL,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_hotel_payments_bookingId ON hotel_payments(bookingId)")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS housekeeping_tasks (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        roomId TEXT NOT NULL, kind TEXT NOT NULL, note TEXT NOT NULL,
+                        status TEXT NOT NULL, assignedTo TEXT NOT NULL, doneAt TEXT,
+                        createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                        syncState TEXT NOT NULL, isDeleted INTEGER NOT NULL
+                    )""")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_housekeeping_tasks_roomId ON housekeeping_tasks(roomId)")
+            }
+        }
+
         private fun applyPendingRestore(context: Context) {
             try {
                 val dbDir = context.getDatabasePath("deryaccount.db").parentFile ?: return
@@ -322,7 +419,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // v2 -> v3: favourites column + held_sales table.
                     // MUST ship as a real migration — a destructive fallback here
                     // would WIPE every shop's books on update.
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     // Kept only as a last resort for pre-accounting installs (DB v1).
                     .fallbackToDestructiveMigration()
                     .build()

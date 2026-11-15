@@ -356,6 +356,9 @@ fun DeryAccountApp() {
             composable("inventory") {
                 InventoryScreen(db, branchId)
             }
+            composable("hotel") {
+                com.derycode.deryaccount.ui.hotel.HotelScreen(db, branchId, userId)
+            }
             composable("reports") {
                 com.derycode.deryaccount.ui.reports.ReportsScreen(db, branchId,
                     onNavigate = { r -> navController.navigate(r) { launchSingleTop = true } })
@@ -461,6 +464,7 @@ private fun appTitle(route: String?): String = when (route) {
     "sales" -> "Sales — Today"
     "pos" -> "DeryAccount — Sell"
     "inventory" -> "Stock"
+    "hotel" -> "Hotel & Accommodation"
     "books" -> "Books of Account"
     "reports" -> "Reports"
     "expenses" -> "Expenses"
