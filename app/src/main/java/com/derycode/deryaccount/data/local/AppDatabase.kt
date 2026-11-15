@@ -32,7 +32,7 @@ import com.derycode.deryaccount.data.local.entity.*
         FolioCharge::class, HotelPayment::class, HousekeepingTask::class
     ],
     version = 9,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun branchDao(): BranchDao

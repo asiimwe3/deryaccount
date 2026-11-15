@@ -116,3 +116,8 @@ dependencies {
 
     debugImplementation 'androidx.compose.ui:ui-tooling'
 }
+
+// Writes the Room schema so migrations can be diffed against the entities.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}

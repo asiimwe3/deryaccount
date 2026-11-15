@@ -391,3 +391,10 @@ gradle packageMsi   # Windows installer (on Windows)
 Screenshots of every screen are in `desktop/docs/screenshots/`, and the details
 are in `desktop/README.md`. Pushing a `desktop-v*` tag makes the
 `Desktop installer (Windows)` workflow build and publish the MSI and EXE.
+
+
+## Android 1.1.0 — hotel & accommodation
+
+Front desk, rooms and rates, bookings, guest folios and hotel reports, all on the
+same books as the shop. Database migrated to v9; existing data is untouched.
+Download: https://github.com/asiimwe3/deryaccount/releases/tag/android-v1.1.0
