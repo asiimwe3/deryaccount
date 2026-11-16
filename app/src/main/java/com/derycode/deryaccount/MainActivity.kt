@@ -75,6 +75,8 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Capture any crash with the real stack trace before the process dies.
+        CrashReporter.install(this)
         // Crash safety net: every unexpected crash is logged to the
         // DeryAccount/crashes folder on the device — never silently lost.
         com.derycode.deryaccount.util.AutoUpdate.installCrashLogger(this)

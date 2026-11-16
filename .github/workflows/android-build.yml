@@ -43,7 +43,9 @@ jobs:
             echo "No ANDROID_KEYSTORE secret — building with default debug signing."
           fi
 
-      - name: Build debug APK (pinned signature)
+      # A release build is minified and signed with the pinned key: ~4x smaller and
+      # far lighter at startup than the old debug APKs that phones were killing.
+      - name: Build release APK (pinned signature)
         env:
           ANDROID_KEYSTORE_FILE: ${{ env.PINNED_KEYSTORE }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -51,10 +53,10 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: DeryAccount-debug-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: DeryAccount-APK
+          path: app/build/outputs/apk/release/app-release.apk
