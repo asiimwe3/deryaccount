@@ -12,8 +12,8 @@ android {
         applicationId "com.derycode.deryaccount"
         minSdk 24          // covers most entry-level tablets in Uganda
         targetSdk 34
-        versionCode 48
-        versionName "1.2.1"
+        versionCode 49
+        versionName "1.2.2"
         vectorDrawables.useSupportLibrary = true
     }
 

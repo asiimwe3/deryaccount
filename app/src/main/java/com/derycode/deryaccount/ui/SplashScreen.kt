@@ -71,7 +71,7 @@ fun DeryAccountSplashScreen() {
             verticalArrangement = Arrangement.Center
         ) {
             Image(
-                painter = painterResource(id = R.mipmap.ic_launcher_foreground),
+                painter = painterResource(id = R.drawable.ic_logo),
                 contentDescription = "DeryAccount",
                 modifier = Modifier.size(150.dp)
             )

@@ -111,7 +111,7 @@ fun HomeScreen(
             // The exact DeryCode mark, the same one on the app icon.
             Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Image(
-                    painterResource(com.derycode.deryaccount.R.mipmap.ic_launcher),
+                    painterResource(com.derycode.deryaccount.R.drawable.ic_logo),
                     contentDescription = "DeryCode",
                     modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp))
                 )
