@@ -66,6 +66,8 @@ compose.desktop {
             vendor = "DeryCode"
             copyright = "© 2026 DeryCode Technologies"
             windows {
+                // The exact DeryCode mark in the Start menu, taskbar and installer.
+                iconFile.set(project.file("src/main/resources/brand/icon.ico"))
                 menuGroup = "DeryCode"
                 // A stable UUID means each new installer upgrades the installed copy
                 // instead of sitting beside it.

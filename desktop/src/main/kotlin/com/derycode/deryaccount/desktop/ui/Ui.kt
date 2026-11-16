@@ -1,6 +1,10 @@
 package com.derycode.deryaccount.desktop.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -298,6 +302,41 @@ private fun RowScope.BasicTextFieldCompat(value: String, onChange: (String) -> U
             }
         }
     )
+}
+
+
+/**
+ * The exact DeryCode logo, packaged with the app (src/main/resources/brand).
+ * Used on the sign-in screen, the sidebar and on DeryCode's own documents.
+ */
+val BrandLogoBytes: ByteArray? by lazy {
+    runCatching {
+        object {}.javaClass.getResourceAsStream("/brand/derycode-logo.png")?.use { it.readBytes() }
+    }.getOrNull()
+}
+
+val BrandLogoBitmap: ImageBitmap? by lazy {
+    BrandLogoBytes?.let { runCatching { org.jetbrains.skia.Image.makeFromEncoded(it).toComposeImageBitmap() }.getOrNull() }
+}
+
+/** The logo mark itself, rounded like the app icon. */
+@Composable
+fun BrandLogo(size: Dp = 38.dp, radius: Dp = 11.dp) {
+    val bmp = BrandLogoBitmap
+    if (bmp != null) {
+        Image(
+            bmp, "DeryCode",
+            modifier = Modifier.size(size).clip(RoundedCornerShape(radius)),
+            contentScale = ContentScale.Fit
+        )
+    } else {
+        Box(
+            Modifier.size(size).clip(RoundedCornerShape(radius)).background(Da.Brand),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("D", fontSize = (size.value * 0.5f).sp, fontWeight = FontWeight.Bold, color = Color.White)
+        }
+    }
 }
 
 @Composable

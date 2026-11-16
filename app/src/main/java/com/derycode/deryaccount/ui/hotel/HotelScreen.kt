@@ -676,8 +676,25 @@ private fun FolioDialog(repo: HotelRepo, bookingId: String, onClose: () -> Unit)
     var showPayment by remember { mutableStateOf(false) }
     var showExtend by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(bookingId, refresh, charges.size, payments.size) { folio = repo.folio(bookingId) }
+
+    // Guest receipt / tax invoice, built offline from this folio and shared.
+    fun printDoc(invoice: Boolean) {
+        val b = booking ?: return
+        scope.launch {
+            runCatching {
+                val file = if (invoice)
+                    HotelDocs.taxInvoice(context, b, charges, payments, folio)
+                else HotelDocs.guestReceipt(context, b, charges, payments, folio)
+                com.derycode.deryaccount.util.Share.file(
+                    context, file,
+                    title = if (invoice) "Share tax invoice" else "Share guest receipt"
+                )
+            }.onFailure { message = it.message ?: "Could not build the document" }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onClose,
@@ -751,6 +768,12 @@ private fun FolioDialog(repo: HotelRepo, bookingId: String, onClose: () -> Unit)
                 }
                 Spacer(Modifier.height(8.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TextButton(onClick = { printDoc(false) }) {
+                        Text("Receipt", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DaBlue)
+                    }
+                    TextButton(onClick = { printDoc(true) }) {
+                        Text("Tax invoice", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DaBlue)
+                    }
                     TextButton(onClick = { showCharge = true }) { Text("Add charge", fontSize = 12.sp) }
                     TextButton(onClick = { showPayment = true }) { Text("Take payment", fontSize = 12.sp) }
                     if (booking?.status == HotelRepo.CHECKED_IN)

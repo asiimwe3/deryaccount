@@ -50,10 +50,7 @@ fun LoginScreen(app: AppState) {
                 Modifier.weight(1f).fillMaxHeight().background(Color(0xFFF1F5FF)).padding(34.dp),
                 verticalArrangement = Arrangement.Center
             ) {
-                Box(
-                    Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(Da.Brand),
-                    contentAlignment = Alignment.Center
-                ) { Text("D", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White) }
+                BrandLogo(size = 70.dp, radius = 18.dp)
                 Spacer(Modifier.height(20.dp))
                 Text("DeryAccount", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Da.Text)
                 Text("Business & Hotel Suite for Windows", fontSize = 13.sp, color = Da.Brand, fontWeight = FontWeight.SemiBold)

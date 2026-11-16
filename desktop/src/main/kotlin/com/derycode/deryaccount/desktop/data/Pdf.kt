@@ -5,6 +5,7 @@ import org.apache.pdfbox.pdmodel.PDPage
 import org.apache.pdfbox.pdmodel.PDPageContentStream
 import org.apache.pdfbox.pdmodel.common.PDRectangle
 import org.apache.pdfbox.pdmodel.font.PDType1Font
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -304,10 +305,19 @@ object Pdf {
         }
         fun rule() { cs.setLineWidth(0.6f); cs.moveTo(m, y + 4f); cs.lineTo(a5.width - m, y + 4f); cs.stroke(); y -= 10f }
 
-        line("DeryCode Technologies", 15f, bold)
-        line("Kyenjojo, Uganda - derycode.online", 8.5f)
-        line("Support: 0762 306 675", 8.5f)
-        y -= 10f
+        // DeryCode's own mark on its own receipt.
+        brandLogo?.let { bytes ->
+            runCatching {
+                val img = PDImageXObject.createFromByteArray(doc, bytes, "derycode-logo")
+                cs.drawImage(img, m, y - 46f, 46f, 46f)
+            }
+        }
+        val hx = m + 54f
+        line("DeryCode Technologies", 15f, bold, hx)
+        line("Kyenjojo, Uganda - derycode.online", 8.5f, reg, hx)
+        line("Support: 0762 306 675", 8.5f, reg, hx)
+        y = (a5.height - 46f) - 54f
+        line("SUBSCRIPTION PAYMENT RECEIPT", 11f, bold)
         line("SUBSCRIPTION PAYMENT RECEIPT", 11f, bold)
         rule()
         row("Receipt no", "DCS-" + code.takeLast(6).replace("-", ""))
@@ -335,6 +345,13 @@ object Pdf {
         doc.save(target)
         doc.close()
         return target
+    }
+
+    /** The exact DeryCode logo, packaged under src/main/resources/brand. */
+    private val brandLogo: ByteArray? by lazy {
+        runCatching {
+            object {}.javaClass.getResourceAsStream("/brand/derycode-logo.png")?.use { it.readBytes() }
+        }.getOrNull()
     }
 
     private fun safe(s: String, font: PDType1Font, size: Float, maxWidth: Float): String {

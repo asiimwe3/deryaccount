@@ -8,6 +8,7 @@ package com.derycode.deryaccount.ui.home
  * most; the books grid opens each book of account.
  */
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -23,6 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -105,6 +108,30 @@ fun HomeScreen(
             .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Column {
+            // The exact DeryCode mark, the same one on the app icon.
+            Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painterResource(com.derycode.deryaccount.R.mipmap.ic_launcher),
+                    contentDescription = "DeryCode",
+                    modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp))
+                )
+                Spacer(Modifier.width(9.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("DeryAccount", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DaTextPrimary)
+                    Text(branchName.ifBlank { "Business Suite" }, fontSize = 10.5.sp, color = DaTextMuted)
+                }
+                com.derycode.deryaccount.billing.HotelLicence.state(context).let { hs ->
+                    if (!hs.open) {
+                        Box(
+                            Modifier.clip(RoundedCornerShape(50)).background(Color(0xFFFFF4E5))
+                                .clickable { onNavigate("hotelicence") }
+                                .padding(horizontal = 9.dp, vertical = 4.dp)
+                        ) {
+                            Text("Hotel Edition", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = DaAmber)
+                        }
+                    }
+                }
+            }
             Text(greeting() + ", $ownerName", fontSize = 20.sp,
                 fontWeight = FontWeight.ExtraBold, color = DaTextPrimary)
             Text("Here's your business at a glance", fontSize = 13.sp, color = DaTextMuted)

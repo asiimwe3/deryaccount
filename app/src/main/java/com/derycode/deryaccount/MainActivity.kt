@@ -357,7 +357,24 @@ fun DeryAccountApp() {
                 InventoryScreen(db, branchId)
             }
             composable("hotel") {
-                com.derycode.deryaccount.ui.hotel.HotelScreen(db, branchId, userId)
+                // The hotel module is its own subscription: when it is not active
+                // (no trial left and no code) the hotel screens pause here and the
+                // shop, stock and books stay fully usable.
+                if (com.derycode.deryaccount.billing.HotelLicence.state(context).open) {
+                    com.derycode.deryaccount.ui.hotel.HotelScreen(db, branchId, userId)
+                } else {
+                    com.derycode.deryaccount.ui.hotel.HotelEditionScreen(
+                        session = session,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+            }
+            composable("hotelicence") {
+                com.derycode.deryaccount.ui.hotel.HotelEditionScreen(
+                    session = session,
+                    onBack = { navController.popBackStack() },
+                    onOpenHotel = { navController.navigate("hotel") { launchSingleTop = true } }
+                )
             }
             composable("reports") {
                 com.derycode.deryaccount.ui.reports.ReportsScreen(db, branchId,
@@ -465,6 +482,7 @@ private fun appTitle(route: String?): String = when (route) {
     "pos" -> "DeryAccount — Sell"
     "inventory" -> "Stock"
     "hotel" -> "Hotel & Accommodation"
+    "hotelicence" -> "Hotel Edition"
     "books" -> "Books of Account"
     "reports" -> "Reports"
     "expenses" -> "Expenses"

@@ -1,30 +1,33 @@
 package com.derycode.deryaccount.ui.theme
 
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// DeryAccount dark palette — near-black + forest green, matches app design
-val DaBlack = Color(0xFF06100B)          // page background
-val DaSurface = Color(0xFF0D1F15)        // cards
-val DaSurface2 = Color(0xFF122A1C)       // slightly lighter cards / chips
-val DaHeader = Color(0xFF0E3B22)         // top app bar / bottom nav
-val DaGreen = Color(0xFF22C55E)          // primary accent, positive amounts
-val DaGreenDeep = Color(0xFF16A34A)
-val DaRed = Color(0xFFEF4444)            // expenses / payments / negative
-val DaBlue = Color(0xFF3B82F6)
-val DaAmber = Color(0xFFF59E0B)
-val DaTextPrimary = Color(0xFFEAF3EC)
-val DaTextMuted = Color(0xFFB9C6BE)
-val DaOutline = Color(0xFF1E3A28)
+// DeryAccount palette — clean white, modelled on derycode.online.
+// Names are unchanged from the original palette so every screen picks up the
+// new look without touching its code.
+val DaBlack = Color(0xFFF6F8FC)          // page background
+val DaSurface = Color(0xFFFFFFFF)        // cards
+val DaSurface2 = Color(0xFFF1F5FD)       // chips, table headers, soft panels
+val DaHeader = Color(0xFFFFFFFF)         // top bar / bottom nav
+val DaGreen = Color(0xFF16A34A)          // money in, confirmed
+val DaGreenDeep = Color(0xFF128746)
+val DaRed = Color(0xFFDC2626)            // expenses, money out
+val DaBlue = Color(0xFF1553C7)           // primary action, links
+val DaAmber = Color(0xFFB45309)          // warnings, balances due
+val DaTextPrimary = Color(0xFF0F1B2D)    // headings and body
+val DaTextMuted = Color(0xFF667085)      // labels, secondary text
+val DaOutline = Color(0xFFE4E9F2)        // hairlines and borders
 
-private val DaColors = darkColorScheme(
-    primary = DaGreen,
-    onPrimary = Color(0xFF03150A),
-    primaryContainer = DaSurface2,
-    onPrimaryContainer = DaGreen,
-    secondary = DaBlue,
+private val DaColors = lightColorScheme(
+    primary = DaBlue,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFEAF0FF),
+    onPrimaryContainer = DaBlue,
+    secondary = DaGreen,
+    onSecondary = Color.White,
     background = DaBlack,
     onBackground = DaTextPrimary,
     surface = DaSurface,
@@ -35,8 +38,8 @@ private val DaColors = darkColorScheme(
     error = DaRed
 )
 
-/** DeryAccount is always dark — matches the app's fixed enterprise POS look. */
+/** DeryAccount now uses the clean white DeryCode look. */
 @Composable
-fun DeryAccountTheme(darkTheme: Boolean = true, content: @Composable () -> Unit) {
+fun DeryAccountTheme(darkTheme: Boolean = false, content: @Composable () -> Unit) {
     MaterialTheme(colorScheme = DaColors, content = content)
 }
