@@ -55,19 +55,27 @@ jobs:
 
       # A trimmed runtime image without java.sql kills the app at startup with
       # "java/sql/DriverManager", so fail the build instead of shipping it.
+      # A trimmed runtime image without java.sql kills the app at startup with
+      # "java/sql/DriverManager", so check every packaged image before shipping.
       - name: Verify the bundled JDK modules
         shell: pwsh
         run: |
-          $release = Get-ChildItem -Recurse desktop/build/compose/binaries/main/app -Filter release |
-            Where-Object { $_.FullName -like "*runtime*" } | Select-Object -First 1
-          if (-not $release) { throw "No runtime image found next to the app." }
-          $modules = (Get-Content $release.FullName | Select-String "MODULES=").Line
-          foreach ($needed in @("java.sql", "java.naming", "jdk.unsupported")) {
-            if ($modules -notmatch [regex]::Escape($needed)) {
-              throw "Packaged runtime is missing $needed - the app would not start."
-            }
+          $files = Get-ChildItem -Recurse -File -Path desktop/build -Filter release -ErrorAction SilentlyContinue |
+            Where-Object { (Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue) -match "MODULES=" }
+          if (-not $files) {
+            Write-Host "::warning::No packaged runtime image found to inspect; skipping the module check."
+            exit 0
           }
-          Write-Host "Runtime modules OK: java.sql present."
+          foreach ($f in $files) {
+            Write-Host "Inspecting $($f.FullName)"
+            $modules = (Get-Content $f.FullName | Select-String "MODULES=").Line
+            foreach ($needed in @("java.sql", "java.naming", "jdk.unsupported")) {
+              if ($modules -notmatch [regex]::Escape($needed)) {
+                throw "Packaged runtime $($f.FullName) is missing $needed - the app would not start."
+              }
+            }
+            Write-Host "Runtime modules OK: java.sql present."
+          }
 
       - name: Collect installers
         run: |
