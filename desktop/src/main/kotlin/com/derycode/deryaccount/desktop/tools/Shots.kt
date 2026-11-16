@@ -30,8 +30,9 @@ fun main(args: Array<String>) {
 
     val screens = listOf(
         "dashboard", "frontdesk", "rooms", "bookings", "guests", "hotelreports",
+        "hotelreceipts", "hotelicence",
         "pos", "sales", "stock", "purchases", "customers",
-        "books", "reports", "admin", "data"
+        "books", "reports", "admin", "data", "settings"
     )
 
     screens.forEach { screen ->

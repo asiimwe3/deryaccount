@@ -6,6 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,7 +35,7 @@ fun SettingsScreen(app: AppState) {
             0 -> BusinessProfileTab(app)
             1 -> UsersTab(app, tick) { tick++ }
             2 -> BranchesTab(app, tick) { tick++ }
-            3 -> SubscriptionTab(repo)
+            3 -> SubscriptionTab(app)
             4 -> AboutTab(app)
         }
     }
@@ -233,7 +234,8 @@ private fun BranchesTab(app: AppState, tick: Int, onChanged: () -> Unit) {
 }
 
 @Composable
-private fun SubscriptionTab(repo: Repo) {
+private fun SubscriptionTab(app: AppState) {
+    val repo = app.repo
     val plans = listOf(
         Triple("Starter", "10,000", "1 shop · 1 user · stock, sales, receipts"),
         Triple("Business", "20,000", "1 shop · 3 users · purchases, customers, VAT"),
@@ -252,6 +254,34 @@ private fun SubscriptionTab(repo: Repo) {
                 Spacer(Modifier.height(10.dp))
                 if (name == current) Pill("Current plan", Da.Green) else Text("Contact DeryCode to switch", fontSize = 10.sp, color = Da.Dim)
             }
+        }
+    }
+    Spacer(Modifier.height(16.dp))
+    val hs = remember(app.tick) { HotelLicence.state(repo) }
+    CardBox(Modifier.fillMaxWidth(), background = androidx.compose.ui.graphics.Color(0xFFF8FAFF)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Hotel, null, tint = Da.Brand, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(9.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Hotel Edition", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Da.Text)
+                Text("Rooms, bookings, guests, folios, housekeeping and hotel reports.",
+                    fontSize = 11.sp, color = Da.Muted)
+            }
+            Text("UGX ${Fmt.money(HotelLicence.YEARLY_UGX.toDouble())} / year", fontSize = 13.sp,
+                fontWeight = FontWeight.Bold, color = Da.Text)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Pill(hs.headline, when (hs.status) {
+                HotelLicence.Status.ACTIVE -> Da.Green
+                HotelLicence.Status.GRACE -> Da.Amber
+                HotelLicence.Status.TRIAL -> Da.Brand
+                HotelLicence.Status.LOCKED -> Da.Red
+            }, filled = true)
+            Spacer(Modifier.width(10.dp))
+            if (hs.expiresOn != null) Text("Until ${Fmt.date(hs.expiresOn!!)}", fontSize = 11.sp, color = Da.Muted)
+            Spacer(Modifier.weight(1f))
+            Btn("Open Hotel Edition", { app.screen = "hotelicence" }, Icons.Default.WorkspacePremium, BtnKind.PRIMARY)
         }
     }
     Spacer(Modifier.height(16.dp))

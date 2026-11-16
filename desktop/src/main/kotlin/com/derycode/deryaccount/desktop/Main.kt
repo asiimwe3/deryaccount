@@ -1,6 +1,7 @@
 package com.derycode.deryaccount.desktop
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -47,6 +48,8 @@ val navItems = listOf(
     NavItem("bookings", "Bookings", Icons.Default.EventAvailable, "HOTEL"),
     NavItem("guests", "Guests", Icons.Default.PersonSearch, "HOTEL"),
     NavItem("hotelreports", "Hotel reports", Icons.Default.BarChart, "HOTEL"),
+    NavItem("hotelreceipts", "Receipts & invoices", Icons.Default.ReceiptLong, "HOTEL"),
+    NavItem("hotelicence", "Hotel Edition", Icons.Default.WorkspacePremium, "HOTEL"),
 
     NavItem("stock", "Stock & inventory", Icons.Default.Inventory2, "STOCK"),
     NavItem("purchases", "Purchases", Icons.Default.ShoppingCart, "STOCK"),
@@ -90,6 +93,7 @@ fun AppShell(app: AppState) {
 
     Row(Modifier.fillMaxSize().background(Da.Black)) {
         Sidebar(app)
+        Box(Modifier.width(1.dp).fillMaxHeight().background(Da.Outline))
         Column(Modifier.weight(1f).fillMaxHeight()) {
             TopBar(app)
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -99,11 +103,13 @@ fun AppShell(app: AppState) {
                     "sales" -> SalesScreen(app)
                     "customers" -> CustomersScreen(app)
                     "shift" -> ShiftScreen(app)
-                    "frontdesk" -> FrontDeskScreen(app)
-                    "rooms" -> RoomsScreen(app)
-                    "bookings" -> BookingsScreen(app)
-                    "guests" -> GuestsScreen(app)
-                    "hotelreports" -> HotelReportsScreen(app)
+                    "frontdesk" -> HotelGate(app) { FrontDeskScreen(app) }
+                    "rooms" -> HotelGate(app) { RoomsScreen(app) }
+                    "bookings" -> HotelGate(app) { BookingsScreen(app) }
+                    "guests" -> HotelGate(app) { GuestsScreen(app) }
+                    "hotelreports" -> HotelGate(app) { HotelReportsScreen(app) }
+                    "hotelreceipts" -> HotelGate(app) { HotelReceiptsScreen(app) }
+                    "hotelicence" -> HotelEditionScreen(app)
                     "stock" -> StockScreen(app)
                     "purchases" -> PurchasesScreen(app)
                     "expenses" -> ExpensesScreen(app)
@@ -143,13 +149,15 @@ private fun Sidebar(app: AppState) {
         else item.key in listOf("dashboard", "pos", "sales", "stock", "purchases", "shift", "customers", "docs")
     }
     Column(
-        Modifier.width(238.dp).fillMaxHeight().background(Da.Sidebar).padding(vertical = 14.dp)
+        Modifier.width(238.dp).fillMaxHeight().background(Da.Sidebar)
+            .border(0.dp, Color.Transparent)
+            .padding(vertical = 14.dp)
     ) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(Da.Green),
+                Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(Da.Brand),
                 contentAlignment = Alignment.Center
-            ) { Text("D", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Da.Black) }
+            ) { Text("D", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Color.White) }
             Spacer(Modifier.width(10.dp))
             Column {
                 Text("DeryAccount", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Da.Text)
@@ -181,9 +189,9 @@ private fun Sidebar(app: AppState) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(Da.Header),
+                    Modifier.size(30.dp).clip(RoundedCornerShape(9.dp)).background(Color(0xFFEAF0FF)),
                     contentAlignment = Alignment.Center
-                ) { Text(initials(app.userName), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Da.Green) }
+                ) { Text(initials(app.userName), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Da.Brand) }
                 Spacer(Modifier.width(9.dp))
                 Column(Modifier.weight(1f)) {
                     Text(app.userName, fontSize = 12.sp, color = Da.Text, maxLines = 1)
@@ -205,16 +213,16 @@ private fun NavRow(item: NavItem, selected: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 1.dp)
             .clip(RoundedCornerShape(9.dp))
-            .background(if (selected) Da.Surface2 else Color.Transparent)
+            .background(if (selected) Color(0xFFEAF0FF) else Color.Transparent)
             .clickable { onClick() }
             .padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(item.icon, null, tint = if (selected) Da.Green else Da.Muted, modifier = Modifier.size(17.dp))
+        Icon(item.icon, null, tint = if (selected) Da.Brand else Da.Muted, modifier = Modifier.size(17.dp))
         Spacer(Modifier.width(10.dp))
         Text(
             item.label, fontSize = 12.5.sp,
-            color = if (selected) Da.Text else Da.Muted,
+            color = if (selected) Da.BrandDeep else Da.Muted,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
         )
     }

@@ -227,6 +227,28 @@ class Hotel(private val repo: Repo) {
 
     fun payments(bookingId: String): List<Row> =
         db.q("SELECT * FROM hotel_payments WHERE booking_id=? ORDER BY paid_at", bookingId)
+    /** The hotel's own profile row, for receipts and invoices. */
+    fun profileRow(): Row = repo.profile()
+
+    /** Every guest payment, newest first — this is the receipts register. */
+    fun allPayments(limit: Int = 400): List<Row> = db.q(
+        """SELECT p.*, b.ref_no, b.guest_name, b.room_id, r.number AS room_number, b.status AS booking_status
+           FROM hotel_payments p
+           JOIN bookings b ON b.id=p.booking_id
+           LEFT JOIN rooms r ON r.id=b.room_id
+           ORDER BY p.paid_at DESC LIMIT ?""", limit
+    )
+
+    /** Payments taken between two dates (inclusive), for a shift or a day close. */
+    fun paymentsBetween(from: String, to: String): List<Row> = db.q(
+        """SELECT p.*, b.ref_no, b.guest_name, r.number AS room_number
+           FROM hotel_payments p
+           JOIN bookings b ON b.id=p.booking_id
+           LEFT JOIN rooms r ON r.id=b.room_id
+           WHERE substr(p.paid_at,1,10) >= ? AND substr(p.paid_at,1,10) <= ?
+           ORDER BY p.paid_at DESC""", from, to
+    )
+
 
     data class Folio(
         val gross: Double, val tax: Double, val paid: Double, val balance: Double,

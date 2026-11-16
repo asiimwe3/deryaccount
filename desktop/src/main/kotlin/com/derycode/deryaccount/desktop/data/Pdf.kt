@@ -164,6 +164,179 @@ object Pdf {
         return target
     }
 
+    // ── Hotel: guest receipt, tax invoice and licence receipt ────────────────
+
+    /**
+     * A guest receipt (80mm, for the thermal printer) or a tax invoice (A5,
+     * for a company account). Same numbers as the folio on screen.
+     */
+    fun hotelFolio(hotel: Hotel, bookingId: String, invoice: Boolean, target: File): File {
+        val b = hotel.booking(bookingId) ?: error("Booking not found")
+        val charges = hotel.charges(bookingId).filter { it.dbl("amount") != 0.0 }
+        val payments = hotel.payments(bookingId)
+        val folio = hotel.folio(bookingId)
+        val p = hotel.profileRow()
+
+        val doc = PDDocument()
+        val a5 = PDRectangle(420f, 595f)
+        val page = PDPage(if (invoice) a5 else PDRectangle(W, 760f))
+        doc.addPage(page)
+        val cs = PDPageContentStream(doc, page)
+        val bold = PDType1Font.HELVETICA_BOLD
+        val reg = PDType1Font.HELVETICA
+        val pageW = if (invoice) a5.width else W
+        val m = if (invoice) 26f else M
+        val inner = pageW - 2 * m
+        var y = page.mediaBox.height - (if (invoice) 40f else 26f)
+
+        fun line(text: String, size: Float = 8f, font: PDType1Font = reg, x: Float = m) {
+            cs.beginText(); cs.setFont(font, size); cs.newLineAtOffset(x, y)
+            cs.showText(safe(text, font, size, inner)); cs.endText()
+            y -= size + (if (invoice) 5f else 3.5f)
+        }
+        fun center(text: String, size: Float = 8f, font: PDType1Font = reg) {
+            val w = font.getStringWidth(safe(text, font, size, inner)) / 1000 * size
+            line(text, size, font, ((pageW - w) / 2).coerceAtLeast(m))
+        }
+        fun row(left: String, right: String, size: Float = 8f, font: PDType1Font = reg) {
+            cs.beginText(); cs.setFont(font, size); cs.newLineAtOffset(m, y)
+            cs.showText(safe(left, font, size, inner - 80f)); cs.endText()
+            val rs = safe(right, font, size, 80f)
+            val rw = font.getStringWidth(rs) / 1000 * size
+            cs.beginText(); cs.setFont(font, size); cs.newLineAtOffset(pageW - m - rw, y)
+            cs.showText(rs); cs.endText()
+            y -= size + (if (invoice) 5f else 3.5f)
+        }
+        fun gap(v: Float = 6f) { y -= v }
+        fun rule() {
+            cs.setLineWidth(0.5f); cs.moveTo(m, y + 3f); cs.lineTo(pageW - m, y + 3f); cs.stroke()
+        }
+
+        val hotelName = if (p.str("name").isBlank()) "Hotel" else p.str("name")
+        center(hotelName, if (invoice) 15f else 11f, bold)
+        if (p.str("address").isNotBlank()) center(p.str("address"), if (invoice) 8.5f else 7.5f)
+        val contact = listOf(p.str("phone"), p.str("email")).filter { it.isNotBlank() }.joinToString(" - ")
+        if (contact.isNotBlank()) center(contact, if (invoice) 8.5f else 7.5f)
+        if (p.str("tin").isNotBlank()) center("TIN: " + p.str("tin"), if (invoice) 8.5f else 7.5f)
+        gap(4f)
+        center(if (invoice) "TAX INVOICE" else "GUEST RECEIPT", if (invoice) 11f else 9f, bold)
+        gap(4f)
+        rule()
+        row(if (invoice) "Invoice no" else "Receipt no", "H-" + b.str("ref_no"))
+        row("Date", Fmt.dateTime(if (payments.isNotEmpty()) payments.last().str("paid_at") else b.str("created_at")))
+        row("Guest", b.str("guest_name"))
+        if (b.str("guest_phone").isNotBlank()) row("Phone", b.str("guest_phone"))
+        row("Room", b.str("room_number") + (if (b.str("type_name").isNotBlank()) " - " + b.str("type_name") else ""))
+        row("Stay", Fmt.date(b.str("check_in_date")) + " to " + Fmt.date(b.str("check_out_date")) + " (" + b.int("nights") + " nights)")
+        rule()
+        gap(2f)
+
+        val groups = charges.groupBy { it.str("kind") }
+            .toList().sortedBy { Hotel.CHARGE_KINDS.indexOf(it.first) }
+        groups.forEach { (kind, lines) ->
+            line(Hotel.kindLabel(kind).uppercase(), if (invoice) 8f else 7.5f, bold)
+            lines.forEach { c ->
+                val qty = if (c.dbl("qty") != 1.0) "  (" + Fmt.qty(c.dbl("qty")) + " x " + Fmt.money(c.dbl("unit_price")) + ")" else ""
+                row("  " + c.str("description").ifBlank { Hotel.kindLabel(kind) } + qty,
+                    Fmt.money(c.dbl("amount")), if (invoice) 8.5f else 7.5f)
+            }
+        }
+        rule()
+        gap(2f)
+        row("Total charges", Fmt.money(folio.gross), 8.5f)
+        row("VAT included", Fmt.money(folio.tax), 8f)
+        row("Paid", Fmt.money(folio.paid), 8f)
+        row(if (folio.balance > 0.5) "BALANCE DUE" else "TOTAL PAID",
+            Fmt.money(if (folio.balance > 0.5) folio.balance else folio.paid),
+            if (invoice) 11f else 9.5f, bold)
+        gap(6f)
+        if (payments.isNotEmpty()) {
+            line("PAYMENTS", if (invoice) 8f else 7.5f, bold)
+            payments.forEach { pay ->
+                row("  " + methodName(pay.str("method")) + " - " + Fmt.date(pay.str("paid_at")),
+                    Fmt.money(pay.dbl("amount")), 7.5f)
+            }
+            gap(4f)
+        }
+        if (invoice) {
+            line("Payment is due on presentation. Thank you for staying with us.", 8f)
+        } else {
+            center("Thank you for staying with us", 8f, bold)
+        }
+        gap(4f)
+        center("Issued by " + hotelName + " - Powered by DeryAccount Hotel Edition", 6.5f)
+
+        cs.close()
+        target.parentFile?.mkdirs()
+        doc.save(target)
+        doc.close()
+        return target
+    }
+
+    /** DeryCode's own receipt for a hotel paying the UGX 200,000 yearly subscription. */
+    fun subscriptionReceipt(
+        payer: String, amount: Long, method: String, days: Int, code: String,
+        periodFrom: String, periodTo: String, target: File
+    ): File {
+        val doc = PDDocument()
+        val a5 = PDRectangle(420f, 595f)
+        val page = PDPage(a5)
+        doc.addPage(page)
+        val cs = PDPageContentStream(doc, page)
+        val bold = PDType1Font.HELVETICA_BOLD
+        val reg = PDType1Font.HELVETICA
+        val m = 30f
+        val inner = a5.width - 2 * m
+        var y = a5.height - 46f
+        fun line(text: String, size: Float = 9f, font: PDType1Font = reg) {
+            cs.beginText(); cs.setFont(font, size); cs.newLineAtOffset(m, y)
+            cs.showText(safe(text, font, size, inner)); cs.endText()
+            y -= size + 6f
+        }
+        fun row(left: String, right: String, size: Float = 9f, font: PDType1Font = reg) {
+            cs.beginText(); cs.setFont(font, size); cs.newLineAtOffset(m, y)
+            cs.showText(safe(left, font, size, inner - 120f)); cs.endText()
+            val rs = safe(right, font, size, 120f)
+            val rw = font.getStringWidth(rs) / 1000 * size
+            cs.beginText(); cs.setFont(font, size); cs.newLineAtOffset(a5.width - m - rw, y)
+            cs.showText(rs); cs.endText()
+            y -= size + 6f
+        }
+        fun rule() { cs.setLineWidth(0.6f); cs.moveTo(m, y + 4f); cs.lineTo(a5.width - m, y + 4f); cs.stroke(); y -= 10f }
+
+        line("DeryCode Technologies", 15f, bold)
+        line("Kyenjojo, Uganda - derycode.online", 8.5f)
+        line("Support: 0762 306 675", 8.5f)
+        y -= 10f
+        line("SUBSCRIPTION PAYMENT RECEIPT", 11f, bold)
+        rule()
+        row("Receipt no", "DCS-" + code.takeLast(6).replace("-", ""))
+        row("Date", Fmt.dateTime(Clock.nowIso()))
+        row("Received from", payer)
+        row("For", "DeryAccount Hotel Edition")
+        row("Period", periodFrom + " to " + periodTo + " (" + days + " days)")
+        row("Method", methodName(method))
+        rule()
+        row("AMOUNT PAID", "UGX " + Fmt.money(amount.toDouble()), 13f, bold)
+        rule()
+        row("Activation code", code)
+        y -= 12f
+        line("This receipt covers the DeryAccount Hotel Edition subscription for the period above.", 8f)
+        line("The activation code licenses the Windows front desk and the Android app on the", 8f)
+        line("same hotel's computers and phones, and works with no internet.", 8f)
+        y -= 16f
+        line("Thank you for choosing DeryCode.", 9.5f, bold)
+        y -= 22f
+        line("Authorised by: ____________________", 8.5f)
+        line("DeryCode Technologies", 8f)
+
+        cs.close()
+        target.parentFile?.mkdirs()
+        doc.save(target)
+        doc.close()
+        return target
+    }
+
     private fun safe(s: String, font: PDType1Font, size: Float, maxWidth: Float): String {
         val clean = s.replace("\u2014", "-").replace("\u2013", "-").replace("\u00A0", " ")
             .filter { it.code in 32..126 }

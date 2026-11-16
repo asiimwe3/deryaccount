@@ -375,6 +375,22 @@ fun FolioDialog(app: AppState, bookingId: String, onClose: () -> Unit) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Btn("Add charge", { addCharge = true }, Icons.Default.AddCircle, BtnKind.GHOST)
             Btn("Take payment", { takePayment = true }, Icons.Default.Payments, BtnKind.GHOST)
+            Btn("Receipt", {
+                runCatching {
+                    Pdf.hotelFolio(hotel, bookingId, invoice = false,
+                        target = java.io.File(java.io.File(System.getProperty("user.home"), "Documents/DeryAccount/receipts"),
+                            "H-" + booking.str("ref_no") + "-receipt.pdf"))
+                }.onSuccess { app.say("Receipt saved to Documents/DeryAccount/receipts") }
+                    .onFailure { app.say(it.message ?: "Could not write the receipt") }
+            }, Icons.Default.Receipt, BtnKind.GHOST)
+            Btn("Tax invoice", {
+                runCatching {
+                    Pdf.hotelFolio(hotel, bookingId, invoice = true,
+                        target = java.io.File(java.io.File(System.getProperty("user.home"), "Documents/DeryAccount/receipts"),
+                            "H-" + booking.str("ref_no") + "-invoice.pdf"))
+                }.onSuccess { app.say("Tax invoice saved to Documents/DeryAccount/receipts") }
+                    .onFailure { app.say(it.message ?: "Could not write the invoice") }
+            }, Icons.Default.Description, BtnKind.GHOST)
             if (booking.str("status") == Hotel.CHECKED_IN) {
                 Btn("Extend stay", { extend = true }, Icons.Default.MoreTime, BtnKind.GHOST)
                 Btn("Check out", {

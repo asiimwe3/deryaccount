@@ -11,6 +11,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -39,25 +41,25 @@ fun LoginScreen(app: AppState) {
     Box(Modifier.fillMaxSize().background(Da.Black), contentAlignment = Alignment.Center) {
         Row(
             Modifier.width(860.dp).height(480.dp)
-                .clip(RoundedCornerShape(20.dp)).background(Da.Surface)
+                .shadow(16.dp, RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp)).background(Da.Surface)
                 .then(Modifier),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Brand panel
             Column(
-                Modifier.weight(1f).fillMaxHeight().background(Da.Header).padding(34.dp),
+                Modifier.weight(1f).fillMaxHeight().background(Color(0xFFF1F5FF)).padding(34.dp),
                 verticalArrangement = Arrangement.Center
             ) {
                 Box(
-                    Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(Da.Green),
+                    Modifier.size(52.dp).clip(RoundedCornerShape(14.dp)).background(Da.Brand),
                     contentAlignment = Alignment.Center
-                ) { Text("D", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Da.Black) }
+                ) { Text("D", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color.White) }
                 Spacer(Modifier.height(20.dp))
                 Text("DeryAccount", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Da.Text)
-                Text("Business Suite for Windows", fontSize = 13.sp, color = Da.Green, fontWeight = FontWeight.SemiBold)
+                Text("Business & Hotel Suite for Windows", fontSize = 13.sp, color = Da.Brand, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(18.dp))
                 Text(
-                    "Stock, sales, customers, suppliers and full double-entry books — all on this computer, working without internet.",
+                    "Stock, sales, rooms, bookings, guests, folios and full double-entry books — all on this computer, working without internet.",
                     fontSize = 12.5.sp, color = Da.Muted, lineHeight = 19.sp
                 )
                 Spacer(Modifier.height(26.dp))

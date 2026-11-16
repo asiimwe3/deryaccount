@@ -17,10 +17,12 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
@@ -35,32 +37,39 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.derycode.deryaccount.desktop.data.Fmt
 
-/** DeryAccount brand palette — the same deep green the phone app uses. */
+/**
+ * DeryAccount palette — clean white / light, taken from the derycode.online
+ * design language: white cards on a very light page, hairline borders,
+ * enterprise blue for action, green for money coming in, red for money out.
+ */
 object Da {
-    val Black = Color(0xFF06100B)
-    val Surface = Color(0xFF0D1F15)
-    val Surface2 = Color(0xFF122A1C)
-    val Header = Color(0xFF0E3B22)
-    val Green = Color(0xFF22C55E)
-    val GreenDeep = Color(0xFF16A34A)
-    val Red = Color(0xFFEF4444)
-    val Blue = Color(0xFF3B82F6)
-    val Amber = Color(0xFFF59E0B)
-    val Purple = Color(0xFFA78BFA)
-    val Text = Color(0xFFEAF3EC)
-    val Muted = Color(0xFFB9C6BE)
-    val Dim = Color(0xFF7E9187)
-    val Outline = Color(0xFF1E3A28)
-    val RowAlt = Color(0xFF0A1911)
-    val Sidebar = Color(0xFF08170F)
+    val Black = Color(0xFFF6F8FC)        // page background
+    val Surface = Color(0xFFFFFFFF)      // cards
+    val Surface2 = Color(0xFFF3F6FB)     // inputs, chips, table headers
+    val Header = Color(0xFFFFFFFF)       // top bar
+    val Brand = Color(0xFF4F7CFF)        // primary action, from the website
+    val BrandDeep = Color(0xFF3B69E6)
+    val Green = Color(0xFF12855C)        // money in / positive
+    val GreenDeep = Color(0xFF0F6B4A)
+    val Red = Color(0xFFD92D20)          // money out / negative
+    val Blue = Color(0xFF2D6BEA)
+    val Amber = Color(0xFFB45309)
+    val Purple = Color(0xFF6D4AC7)
+    val Text = Color(0xFF0F1B2D)
+    val Muted = Color(0xFF55657C)
+    val Dim = Color(0xFF8898AC)
+    val Outline = Color(0xFFE3E9F2)
+    val RowAlt = Color(0xFFFAFBFD)
+    val Sidebar = Color(0xFFFFFFFF)
+    val OnBrand = Color(0xFFFFFFFF)
 }
 
-private val scheme = darkColorScheme(
-    primary = Da.Green,
-    onPrimary = Color(0xFF03150A),
-    primaryContainer = Da.Surface2,
-    onPrimaryContainer = Da.Green,
-    secondary = Da.Blue,
+private val scheme = lightColorScheme(
+    primary = Da.Brand,
+    onPrimary = Da.OnBrand,
+    primaryContainer = Color(0xFFEAF0FF),
+    onPrimaryContainer = Da.BrandDeep,
+    secondary = Da.Green,
     background = Da.Black,
     onBackground = Da.Text,
     surface = Da.Surface,
@@ -86,9 +95,10 @@ fun CardBox(
 ) {
     Column(
         modifier
-            .clip(RoundedCornerShape(14.dp))
+            .shadow(1.dp, RoundedCornerShape(16.dp), ambientColor = Color(0x140F1B2D), spotColor = Color(0x140F1B2D))
+            .clip(RoundedCornerShape(16.dp))
             .background(background)
-            .border(1.dp, Da.Outline, RoundedCornerShape(14.dp))
+            .border(1.dp, Da.Outline, RoundedCornerShape(16.dp))
             .padding(padding)
     ) { content() }
 }
@@ -123,9 +133,10 @@ fun KpiCard(
 ) {
     Column(
         modifier
-            .clip(RoundedCornerShape(14.dp))
+            .shadow(1.dp, RoundedCornerShape(16.dp), ambientColor = Color(0x140F1B2D), spotColor = Color(0x140F1B2D))
+            .clip(RoundedCornerShape(16.dp))
             .background(Da.Surface)
-            .border(1.dp, Da.Outline, RoundedCornerShape(14.dp))
+            .border(1.dp, Da.Outline, RoundedCornerShape(16.dp))
             .padding(16.dp)
     ) {
         Text(title.uppercase(), fontSize = 10.sp, color = Da.Muted, letterSpacing = 0.8.sp, fontWeight = FontWeight.SemiBold)
@@ -150,13 +161,13 @@ fun Btn(
     modifier: Modifier = Modifier
 ) {
     val bg = when (kind) {
-        BtnKind.PRIMARY -> if (enabled) Da.Green else Da.Surface2
+        BtnKind.PRIMARY -> if (enabled) Da.Brand else Da.Surface2
         BtnKind.GHOST -> Color.Transparent
         BtnKind.DANGER -> if (enabled) Da.Red.copy(alpha = 0.16f) else Da.Surface2
         BtnKind.SUBTLE -> Da.Surface2
     }
     val fg = when (kind) {
-        BtnKind.PRIMARY -> if (enabled) Color(0xFF03150A) else Da.Dim
+        BtnKind.PRIMARY -> if (enabled) Da.OnBrand else Da.Dim
         BtnKind.GHOST -> Da.Text
         BtnKind.DANGER -> Da.Red
         BtnKind.SUBTLE -> Da.Text
@@ -299,7 +310,8 @@ fun TabBar(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier:
             val active = i == selected
             Box(
                 Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
-                    .background(if (active) Da.Header else Color.Transparent)
+                    .background(if (active) Da.Surface else Color.Transparent)
+                    .then(if (active) Modifier.border(1.dp, Da.Outline, RoundedCornerShape(8.dp)) else Modifier)
                     .clickable { onSelect(i) }
                     .padding(vertical = 9.dp),
                 contentAlignment = Alignment.Center
@@ -307,7 +319,7 @@ fun TabBar(tabs: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier:
                 Text(
                     t, fontSize = 12.sp,
                     fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-                    color = if (active) Da.Green else Da.Muted,
+                    color = if (active) Da.Brand else Da.Muted,
                     textAlign = TextAlign.Center, maxLines = 1
                 )
             }
@@ -417,12 +429,15 @@ fun DialogBox(
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             Modifier.width(width).heightIn(max = 760.dp)
+                .shadow(12.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(Da.Surface)
                 .border(1.dp, Da.Outline, RoundedCornerShape(16.dp))
         ) {
             Row(
-                Modifier.fillMaxWidth().background(Da.Header).padding(horizontal = 20.dp, vertical = 14.dp),
+                Modifier.fillMaxWidth().background(Da.Surface)
+                    .border(0.dp, Color.Transparent)
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Da.Text, modifier = Modifier.weight(1f))
