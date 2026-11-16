@@ -53,6 +53,22 @@ jobs:
         working-directory: desktop
         run: gradle packageMsi packageExe --console=plain
 
+      # A trimmed runtime image without java.sql kills the app at startup with
+      # "java/sql/DriverManager", so fail the build instead of shipping it.
+      - name: Verify the bundled JDK modules
+        shell: pwsh
+        run: |
+          $release = Get-ChildItem -Recurse desktop/build/compose/binaries/main/app -Filter release |
+            Where-Object { $_.FullName -like "*runtime*" } | Select-Object -First 1
+          if (-not $release) { throw "No runtime image found next to the app." }
+          $modules = (Get-Content $release.FullName | Select-String "MODULES=").Line
+          foreach ($needed in @("java.sql", "java.naming", "jdk.unsupported")) {
+            if ($modules -notmatch [regex]::Escape($needed)) {
+              throw "Packaged runtime is missing $needed - the app would not start."
+            }
+          }
+          Write-Host "Runtime modules OK: java.sql present."
+
       - name: Collect installers
         run: |
           Get-ChildItem -Recurse desktop\build\compose\binaries\main | Select-Object FullName, Length

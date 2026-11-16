@@ -22,7 +22,7 @@ plugins {
 
 kotlin { jvmToolchain(17) }
 
-val desktopVersion = "1.2.0"
+val desktopVersion = "1.2.1"
 
 dependencies {
     implementation(compose.desktop.currentOs)
@@ -60,6 +60,17 @@ compose.desktop {
         mainClass = "com.derycode.deryaccount.desktop.MainKt"
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb)
+            // Pin the JDK modules the app genuinely needs. Compose only guesses them
+            // from static analysis, and a trimmed image without java.sql makes the
+            // app die at startup with "java/sql/DriverManager".
+            modules(
+                "java.sql",          // JDBC / SQLite driver
+                "java.naming",       // JNDI used by the driver loader
+                "java.management",   // JMX bits pulled in by pooling/threading
+                "jdk.unsupported",   // sun.misc.Unsafe used by Kotlin/Skia
+                "jdk.crypto.ec",     // TLS curves for any HTTPS call
+                "java.net.http"      // HTTP client
+            )
             packageName = "DeryAccount"
             packageVersion = desktopVersion
             description = "DeryAccount — offline books of account, stock and POS for Ugandan businesses"
