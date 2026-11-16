@@ -289,9 +289,9 @@ object Pdf {
         val m = 30f
         val inner = a5.width - 2 * m
         var y = a5.height - 46f
-        fun line(text: String, size: Float = 9f, font: PDType1Font = reg) {
-            cs.beginText(); cs.setFont(font, size); cs.newLineAtOffset(m, y)
-            cs.showText(safe(text, font, size, inner)); cs.endText()
+        fun line(text: String, size: Float = 9f, font: PDType1Font = reg, x: Float = m) {
+            cs.beginText(); cs.setFont(font, size); cs.newLineAtOffset(x, y)
+            cs.showText(safe(text, font, size, inner - (x - m))); cs.endText()
             y -= size + 6f
         }
         fun row(left: String, right: String, size: Float = 9f, font: PDType1Font = reg) {
@@ -317,7 +317,6 @@ object Pdf {
         line("Kyenjojo, Uganda - derycode.online", 8.5f, reg, hx)
         line("Support: 0762 306 675", 8.5f, reg, hx)
         y = (a5.height - 46f) - 54f
-        line("SUBSCRIPTION PAYMENT RECEIPT", 11f, bold)
         line("SUBSCRIPTION PAYMENT RECEIPT", 11f, bold)
         rule()
         row("Receipt no", "DCS-" + code.takeLast(6).replace("-", ""))
