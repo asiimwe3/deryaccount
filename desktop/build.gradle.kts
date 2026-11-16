@@ -22,7 +22,7 @@ plugins {
 
 kotlin { jvmToolchain(17) }
 
-val desktopVersion = "1.1.0"
+val desktopVersion = "1.2.0"
 
 dependencies {
     implementation(compose.desktop.currentOs)
