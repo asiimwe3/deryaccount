@@ -50,7 +50,7 @@ jobs:
       # "Only VectorDrawables and rasterized asset types are supported".
       - name: Guard against adaptive icons in the UI
         run: |
-          if grep -rn "R.mipmap.ic_launcher\|R.mipmap.ic_launcher_round" app/src/main/java; then
+          if grep -rn "R\.mipmap\." app/src/main/java; then
             echo "Use R.drawable.ic_logo (a raster) in the UI, never the adaptive icon." >&2
             exit 1
           fi
