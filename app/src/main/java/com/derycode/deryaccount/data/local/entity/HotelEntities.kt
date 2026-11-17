@@ -146,3 +146,25 @@ data class HousekeepingTask(
     override val syncState: String = "pending",
     override val isDeleted: Boolean = false
 ) : Syncable
+
+/**
+ * A closed business day. The audit stores the day's totals so the owner and an
+ * auditor read the same numbers weeks later, exactly as Yanolja's day-end report.
+ */
+@Entity(tableName = "night_audits")
+data class NightAudit(
+    @PrimaryKey val id: String,
+    val businessDate: String,
+    val closedAt: String,
+    val closedBy: String,
+    val roomsSold: Int,
+    val roomsAvailable: Int,
+    val revenue: Double,
+    val payments: Double,
+    val noShows: Int,
+    val note: String = "",
+    override val createdAt: String,
+    override val updatedAt: String,
+    override val syncState: String = "pending",
+    override val isDeleted: Boolean = false
+) : Syncable

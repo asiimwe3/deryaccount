@@ -592,4 +592,77 @@ class HotelRepo(
     }
 
     suspend fun hasRooms(): Boolean = roomsOnce().isNotEmpty()
+
+    // ── Night audit: close the day like a full PMS ───────────────────────────
+    data class AuditSummary(
+        val businessDate: String,
+        val roomsSold: Int,
+        val roomsAvailable: Int,
+        val revenue: Double,
+        val payments: Double,
+        val noShows: Int
+    ) {
+        val occupancy: Double get() = if (roomsAvailable > 0) roomsSold * 100.0 / roomsAvailable else 0.0
+    }
+
+    suspend fun businessDate(): String {
+        val last = db.hotelDao().lastAudit() ?: return today()
+        return addDays(last.businessDate, 1)
+    }
+
+    suspend fun auditSummary(date: String? = null): AuditSummary {
+        val d = date ?: businessDate()
+        return AuditSummary(
+            businessDate = d,
+            roomsSold = db.hotelDao().roomsSoldOn(d),
+            roomsAvailable = db.hotelDao().roomCount(),
+            revenue = db.hotelDao().chargesOn(d),
+            payments = db.hotelDao().paymentsOn(d),
+            noShows = db.hotelDao().dueArrivals(d).size
+        )
+    }
+
+    fun audits(): Flow<List<NightAudit>> = db.hotelDao().observeAudits()
+
+    /** Closes the business day once. Re-running the same day is refused. */
+    suspend fun closeNightAudit(date: String? = null, userId: String = "u-owner"): NightAudit {
+        val d = date ?: businessDate()
+        require(db.hotelDao().auditFor(d) == null) { d + " is already closed" }
+        val summary = auditSummary(d)
+        val due = db.hotelDao().dueArrivals(d)
+        if (due.isNotEmpty()) db.hotelDao().markNoShow(due.map { it.id }, now())
+        val audit = NightAudit(
+            id = java.util.UUID.randomUUID().toString(),
+            businessDate = d,
+            closedAt = now(),
+            closedBy = userId,
+            roomsSold = summary.roomsSold,
+            roomsAvailable = summary.roomsAvailable,
+            revenue = money2(summary.revenue),
+            payments = money2(summary.payments),
+            noShows = due.size,
+            note = "Occupancy " + pct(summary.occupancy / 100.0),
+            createdAt = now(),
+            updatedAt = now()
+        )
+        db.hotelDao().upsertAudit(audit)
+        return audit
+    }
+
+    // ── Upsells: what the desk sells beyond the room ─────────────────────────
+    data class Upsell(val label: String, val kind: String, val price: Double)
+
+    val upsells = listOf(
+        Upsell("Late checkout", "EXTRA", 20_000.0),
+        Upsell("Breakfast", "RESTAURANT", 15_000.0),
+        Upsell("Airport transfer", "EXTRA", 80_000.0),
+        Upsell("Laundry", "LAUNDRY", 10_000.0),
+        Upsell("Extra bed", "EXTRA", 25_000.0),
+        Upsell("Room upgrade", "EXTRA", 50_000.0)
+    )
+
+    suspend fun addUpsell(bookingId: String, upsell: Upsell) =
+        addCharge(bookingId, upsell.kind, upsell.label, 1.0, upsell.price)
+
+    private fun money2(v: Double): Double = Math.round(v * 100.0) / 100.0
 }

@@ -3,6 +3,8 @@ package com.derycode.deryaccount.data.local.dao
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import com.derycode.deryaccount.data.local.entity.*
 import kotlinx.coroutines.flow.Flow
 
@@ -152,4 +154,35 @@ interface HotelDao {
               WHERE l.accountId = :accountId AND substr(e.entryDate,1,10) BETWEEN :from AND :to
               GROUP BY label ORDER BY label""")
     suspend fun revenueByDay(accountId: String, from: String, to: String): List<LedgerTotal>
+
+    // ── Night audit ─────────────────────────────────────────────────────────
+    @Upsert
+    suspend fun upsertAudit(audit: NightAudit)
+
+    @Query("SELECT * FROM night_audits WHERE isDeleted = 0 ORDER BY businessDate DESC LIMIT :limit")
+    fun observeAudits(limit: Int = 30): Flow<List<NightAudit>>
+
+    @Query("SELECT * FROM night_audits WHERE isDeleted = 0 ORDER BY businessDate DESC LIMIT 1")
+    suspend fun lastAudit(): NightAudit?
+
+    @Query("SELECT * FROM night_audits WHERE businessDate = :date AND isDeleted = 0 LIMIT 1")
+    suspend fun auditFor(date: String): NightAudit?
+
+    @Query("SELECT COUNT(DISTINCT roomId) FROM bookings WHERE isDeleted = 0 AND status IN ('CHECKED_IN','CHECKED_OUT') AND checkInDate <= :date AND checkOutDate > :date")
+    suspend fun roomsSoldOn(date: String): Int
+
+    @Query("SELECT COUNT(*) FROM hotel_rooms WHERE isDeleted = 0 AND isActive = 1")
+    suspend fun roomCount(): Int
+
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM folio_charges WHERE isDeleted = 0 AND chargeDate = :date")
+    suspend fun chargesOn(date: String): Double
+
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM hotel_payments WHERE isDeleted = 0 AND substr(paidAt, 1, 10) = :date")
+    suspend fun paymentsOn(date: String): Double
+
+    @Query("SELECT * FROM bookings WHERE isDeleted = 0 AND status = 'BOOKED' AND checkInDate = :date")
+    suspend fun dueArrivals(date: String): List<Booking>
+
+    @Query("UPDATE bookings SET status = 'NO_SHOW', updatedAt = :now WHERE id IN (:ids)")
+    suspend fun markNoShow(ids: List<String>, now: String)
 }

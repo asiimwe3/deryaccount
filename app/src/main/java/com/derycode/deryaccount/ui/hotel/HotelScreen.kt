@@ -11,6 +11,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import kotlinx.coroutines.flow.first
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Card
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -50,7 +58,7 @@ fun HotelScreen(db: AppDatabase, branchId: String, userId: String) {
 
     Column(Modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = tab, containerColor = DaSurface) {
-            listOf("Desk", "Rooms", "Bookings", "Reports").forEachIndexed { i, label ->
+            listOf("Desk", "Rooms", "Bookings", "Audit", "Reports").forEachIndexed { i, label ->
                 Tab(
                     selected = tab == i, onClick = { tab = i },
                     text = { Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold) }
@@ -73,6 +81,7 @@ fun HotelScreen(db: AppDatabase, branchId: String, userId: String) {
                 onChanged = { refresh++ }
             )
             2 -> BookingsTab(repo, rooms, refresh, onOpenFolio = { folioFor = it })
+            3 -> AuditTab(repo, refresh, onChanged = { refresh++ })
             else -> ReportsTab(repo, refresh)
         }
     }
@@ -775,6 +784,22 @@ private fun FolioDialog(repo: HotelRepo, bookingId: String, onClose: () -> Unit)
                         Text("Tax invoice", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = DaBlue)
                     }
                     TextButton(onClick = { showCharge = true }) { Text("Add charge", fontSize = 12.sp) }
+                    // One tap for the extras the desk sells every day.
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        repo.upsells.take(4).forEach { up ->
+                            AssistChip(
+                                onClick = {
+                                    scope.launch {
+                                        runCatching { repo.addUpsell(bookingId, up) }
+                                            .onSuccess { message = up.label + " added"; refresh++ }
+                                            .onFailure { message = it.message ?: "Could not add " + up.label }
+                                    }
+                                },
+                                label = { Text(up.label, fontSize = 11.sp, maxLines = 1) }
+                            )
+                        }
+                    }
                     TextButton(onClick = { showPayment = true }) { Text("Take payment", fontSize = 12.sp) }
                     if (booking?.status == HotelRepo.CHECKED_IN)
                         TextButton(onClick = { showExtend = true }) { Text("Extend", fontSize = 12.sp) }
@@ -1064,4 +1089,105 @@ private fun GuestDialog(repo: HotelRepo, guest: Guest, onDone: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDone) { Text("Close") } }
     )
+}
+
+// ── Night audit: close the day on the phone too ──────────────────────────────
+
+@Composable
+private fun AuditTab(repo: HotelRepo, refresh: Int, onChanged: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var summary by remember { mutableStateOf<HotelRepo.AuditSummary?>(null) }
+    var history by remember { mutableStateOf<List<NightAudit>>(emptyList()) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var confirm by remember { mutableStateOf(false) }
+
+    LaunchedEffect(refresh) {
+        runCatching { repo.auditSummary() }.onSuccess { summary = it }
+            .onFailure { message = it.message }
+        runCatching { repo.audits().first() }.onSuccess { history = it }
+    }
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp)) {
+        Text("Night audit", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = DaTextPrimary)
+        Text(
+            "Close the day once the last guest has been served. Rooms sold, money taken and " +
+                "bookings that never arrived are written down for good.",
+            fontSize = 12.sp, color = DaTextMuted, modifier = Modifier.padding(top = 4.dp)
+        )
+        Spacer(Modifier.height(12.dp))
+
+        val s = summary
+        if (s == null) {
+            Text("Reading the day…", fontSize = 12.sp, color = DaTextMuted)
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KpiChip("Business date", s.businessDate.takeLast(5), DaBlue, Modifier.weight(1f))
+                KpiChip("Occupancy", HotelRepo.pct(s.occupancy / 100.0), DaGreen, Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                KpiChip("Charged", HotelRepo.money(s.revenue), DaTextPrimary, Modifier.weight(1f))
+                KpiChip("Received", HotelRepo.money(s.payments), DaGreen, Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(12.dp))
+            Card(colors = CardDefaults.cardColors(containerColor = DaSurface)) {
+                Column(Modifier.padding(12.dp)) {
+                    Text("Rooms sold: ${s.roomsSold} of ${s.roomsAvailable}", fontSize = 12.5.sp, color = DaTextPrimary)
+                    Text("Booked, never arrived: ${s.noShows}", fontSize = 12.5.sp, color = DaTextPrimary)
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = { confirm = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = DaBlue)
+                    ) { Text("Close " + s.businessDate, fontSize = 13.sp) }
+                }
+            }
+        }
+
+        message?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(it, fontSize = 12.sp, color = DaGreen)
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Text("Closed days", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = DaTextPrimary)
+        if (history.isEmpty()) {
+            Text("No day closed yet.", fontSize = 12.sp, color = DaTextMuted, modifier = Modifier.padding(top = 6.dp))
+        }
+        history.take(14).forEach { a ->
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(a.businessDate, fontSize = 12.5.sp, color = DaTextPrimary, modifier = Modifier.weight(1f))
+                Text("${a.roomsSold}/${a.roomsAvailable} rooms", fontSize = 11.sp, color = DaTextMuted,
+                    modifier = Modifier.weight(1f))
+                Text(HotelRepo.money(a.revenue), fontSize = 11.5.sp, color = DaTextPrimary,
+                    modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+            }
+        }
+    }
+
+    if (confirm) {
+        val date = summary?.businessDate ?: HotelRepo.today()
+        AlertDialog(
+            onDismissRequest = { confirm = false },
+            title = { Text("Close " + date + "?", fontSize = 15.sp) },
+            text = {
+                Text("Every booking still marked as due to arrive today will be marked as a no-show. " +
+                    "The day's totals are written down and cannot be closed twice.", fontSize = 13.sp)
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirm = false
+                    scope.launch {
+                        runCatching { repo.closeNightAudit(date) }
+                            .onSuccess { message = it.businessDate + " closed"; onChanged() }
+                            .onFailure { message = it.message ?: "Could not close the day" }
+                    }
+                }) { Text("Close the day", fontWeight = FontWeight.Bold, color = DaBlue) }
+            },
+            dismissButton = { TextButton(onClick = { confirm = false }) { Text("Not yet") } }
+        )
+    }
 }
