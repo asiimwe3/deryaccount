@@ -59,6 +59,8 @@ object Da {
     val Blue = Color(0xFF2D6BEA)
     val Amber = Color(0xFFB45309)
     val Purple = Color(0xFF6D4AC7)
+    val Gold = Color(0xFFB7791F)         // balances due, warnings
+    val GoldSoft = Color(0xFFFDF6E7)     // weekend columns, soft highlight
     val Text = Color(0xFF0F1B2D)
     val Muted = Color(0xFF55657C)
     val Dim = Color(0xFF8898AC)

@@ -218,6 +218,9 @@ fun NewBookingDialog(app: AppState, onClose: () -> Unit) {
     var deposit by remember { mutableStateOf("") }
     var depositMethod by remember { mutableStateOf("CASH") }
     var source by remember { mutableStateOf("WALK_IN") }
+    var agentName by remember { mutableStateOf("Direct (no agent)") }
+    var groupName by remember { mutableStateOf("") }
+    val agentList = remember { runCatching { hotel.agents() }.getOrDefault(emptyList()) }
     var notes by remember { mutableStateOf("") }
     var checkInNow by remember { mutableStateOf(true) }
 
@@ -265,7 +268,13 @@ fun NewBookingDialog(app: AppState, onClose: () -> Unit) {
             MoneyField("Deposit (optional)", deposit, { deposit = it.filter { c -> c.isDigit() || c == '.' } }, Modifier.weight(1f))
             Drop("Deposit to", listOf("CASH", "MTN_MOMO", "AIRTEL_MONEY", "BANK"), depositMethod, { depositMethod = it }, Modifier.weight(1f))
             Drop("Source", Hotel.SOURCES, source, { source = it }, Modifier.weight(1f))
+            Spacer(Modifier.width(10.dp))
+            Drop("Agent / company", listOf("Direct (no agent)") + agentList.map { it.str("name") }, agentName,
+                { agentName = it }, Modifier.weight(1f))
         }
+        Spacer(Modifier.height(10.dp))
+        Field("Group / block (optional)", groupName, { groupName = it },
+            placeholder = "e.g. Kyambogo wedding, 6 rooms")
         Spacer(Modifier.height(10.dp))
         Field("Notes", notes, { notes = it }, placeholder = "Any request: extra bed, late arrival, company account…")
         Spacer(Modifier.height(10.dp))
@@ -284,7 +293,9 @@ fun NewBookingDialog(app: AppState, onClose: () -> Unit) {
                         adults.toIntOrNull() ?: 1, children.toIntOrNull() ?: 0,
                         rate.toDoubleOrNull(), source, notes,
                         deposit.toDoubleOrNull() ?: 0.0, depositMethod,
-                        userId = app.user?.str("id") ?: "u-owner"
+                        userId = app.user?.str("id") ?: "u-owner",
+                        agentName = if (agentName.startsWith("Direct")) "" else agentName,
+                        groupName = groupName
                     )
                     if (checkInNow) hotel.walkIn(
                         name, phone, roomRow.str("id"), checkOut,
@@ -374,6 +385,14 @@ fun FolioDialog(app: AppState, bookingId: String, onClose: () -> Unit) {
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Btn("Add charge", { addCharge = true }, Icons.Default.AddCircle, BtnKind.GHOST)
+            // One-tap upsells: breakfast, the airport run, the late checkout.
+            hotel.UPSELLS.take(3).forEach { up ->
+                Btn(up.label, {
+                    runCatching { hotel.addUpsell(bookingId, up, userId = app.user?.str("id") ?: "u-owner") }
+                        .onSuccess { app.say("${up.label} added · ${Fmt.money(up.price)}"); app.refresh() }
+                        .onFailure { app.say(it.message ?: "Could not add ${up.label}") }
+                }, Icons.Default.AddCircleOutline, BtnKind.SUBTLE)
+            }
             Btn("Take payment", { takePayment = true }, Icons.Default.Payments, BtnKind.GHOST)
             Btn("Receipt", {
                 runCatching {

@@ -69,7 +69,33 @@ class DatabaseShop(val file: File) : AutoCloseable {
     private fun createSchema() {
         conn.autoCommit = true
         conn.createStatement().use { st -> DDL.forEach { st.execute(it) } }
-        meta("schema_version", "1")
+        // Columns added after the first release are applied in place — an existing
+        // hotel's database keeps every booking it already has.
+        addColumns(
+            "bookings" to listOf(
+                "agent_id" to "TEXT", "agent_name" to "TEXT", "commission_pct" to "REAL DEFAULT 0",
+                "group_name" to "TEXT", "company" to "TEXT", "market" to "TEXT", "cancel_reason" to "TEXT"
+            ),
+            "guests" to listOf(
+                "vip" to "INTEGER DEFAULT 0", "loyalty" to "INTEGER DEFAULT 0",
+                "id_type" to "TEXT", "preferences" to "TEXT", "blacklist" to "INTEGER DEFAULT 0"
+            ),
+            "housekeeping_tasks" to listOf("priority" to "TEXT DEFAULT 'NORMAL'", "updated_at" to "TEXT"),
+            "rooms" to listOf("held_until" to "TEXT")
+        )
+        meta("schema_version", "2")
+    }
+
+    /** Adds any missing column to an existing table (SQLite has no IF NOT EXISTS for columns). */
+    private fun addColumns(vararg tables: Pair<String, List<Pair<String, String>>>) {
+        tables.forEach { (table, columns) ->
+            val existing = q("PRAGMA table_info(`" + table + "`)").map { it.str("name") }.toSet()
+            columns.forEach { (name, type) ->
+                if (name !in existing) {
+                    exec("ALTER TABLE `" + table + "` ADD COLUMN `" + name + "` " + type)
+                }
+            }
+        }
     }
 
     private fun seed() {
@@ -317,6 +343,26 @@ private val DDL: List<String> = listOf(
             "method TEXT, reference TEXT, note TEXT, paid_at TEXT, user_id TEXT, created_at TEXT)",
         "CREATE TABLE IF NOT EXISTS housekeeping_tasks (id TEXT PRIMARY KEY, room_id TEXT, kind TEXT, " +
             "note TEXT, status TEXT DEFAULT 'OPEN', assigned_to TEXT, created_at TEXT, done_at TEXT)",
+        // ── Hotel parity: rates, agents, night audit ─────────────────────────
+        "CREATE TABLE IF NOT EXISTS rate_plans (id TEXT PRIMARY KEY, name TEXT, room_type_id TEXT, " +
+            "kind TEXT DEFAULT 'EP', price_delta REAL DEFAULT 0, valid_from TEXT, valid_to TEXT, " +
+            "weekend_delta REAL DEFAULT 0, min_nights INTEGER DEFAULT 1, is_active INTEGER DEFAULT 1, " +
+            "created_at TEXT, updated_at TEXT)",
+        "CREATE TABLE IF NOT EXISTS rate_overrides (id TEXT PRIMARY KEY, room_type_id TEXT, " +
+            "rate_date TEXT, rate REAL, note TEXT, created_at TEXT)",
+        "CREATE INDEX IF NOT EXISTS idx_rate_override ON rate_overrides(room_type_id, rate_date)",
+        "CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT, kind TEXT DEFAULT 'TRAVEL_AGENT', " +
+            "contact TEXT, phone TEXT, email TEXT, commission_pct REAL DEFAULT 0, credit_limit REAL DEFAULT 0, " +
+            "notes TEXT, is_active INTEGER DEFAULT 1, created_at TEXT, updated_at TEXT)",
+        "CREATE TABLE IF NOT EXISTS agent_invoices (id TEXT PRIMARY KEY, agent_id TEXT, invoice_no TEXT, " +
+            "period_from TEXT, period_to TEXT, amount REAL DEFAULT 0, paid REAL DEFAULT 0, " +
+            "status TEXT DEFAULT 'OPEN', issued_at TEXT, due_date TEXT, note TEXT, created_at TEXT)",
+        "CREATE TABLE IF NOT EXISTS night_audits (id TEXT PRIMARY KEY, business_date TEXT, closed_at TEXT, " +
+            "closed_by TEXT, rooms_sold INTEGER DEFAULT 0, rooms_available INTEGER DEFAULT 0, " +
+            "revenue REAL DEFAULT 0, payments REAL DEFAULT 0, no_shows INTEGER DEFAULT 0, note TEXT)",
+        "CREATE TABLE IF NOT EXISTS maintenance_tickets (id TEXT PRIMARY KEY, room_id TEXT, issue TEXT, " +
+            "priority TEXT DEFAULT 'NORMAL', status TEXT DEFAULT 'OPEN', reported_by TEXT, " +
+            "assigned_to TEXT, cost REAL DEFAULT 0, created_at TEXT, done_at TEXT)",
         "CREATE INDEX IF NOT EXISTS idx_bookings_dates ON bookings(check_in_date, check_out_date)",
         "CREATE INDEX IF NOT EXISTS idx_bookings_room ON bookings(room_id)",
         "CREATE INDEX IF NOT EXISTS idx_charges_booking ON folio_charges(booking_id)",

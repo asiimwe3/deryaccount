@@ -44,9 +44,14 @@ val navItems = listOf(
     NavItem("shift", "Shift & cash", Icons.Default.Payments, "SALES"),
 
     NavItem("frontdesk", "Front desk", Icons.Default.Hotel, "HOTEL"),
+    NavItem("hotelcalendar", "Availability", Icons.Default.CalendarMonth, "HOTEL"),
     NavItem("rooms", "Rooms & rates", Icons.Default.MeetingRoom, "HOTEL"),
+    NavItem("hotelrates", "Rate plans", Icons.Default.PriceChange, "HOTEL"),
     NavItem("bookings", "Bookings", Icons.Default.EventAvailable, "HOTEL"),
     NavItem("guests", "Guests", Icons.Default.PersonSearch, "HOTEL"),
+    NavItem("housekeeping", "Housekeeping", Icons.Default.CleaningServices, "HOTEL"),
+    NavItem("hotelaudit", "Night audit", Icons.Default.NightsStay, "HOTEL"),
+    NavItem("hotelagents", "Agents & city ledger", Icons.Default.Handshake, "HOTEL"),
     NavItem("hotelreports", "Hotel reports", Icons.Default.BarChart, "HOTEL"),
     NavItem("hotelreceipts", "Receipts & invoices", Icons.Default.ReceiptLong, "HOTEL"),
     NavItem("hotelicence", "Hotel Edition", Icons.Default.WorkspacePremium, "HOTEL"),
@@ -66,7 +71,43 @@ val navItems = listOf(
     NavItem("docs", "Help & docs", Icons.Default.HelpOutline, "SYSTEM")
 )
 
-fun main() = application {
+/** Any unexpected error is written down and shown, never silently closes the shop's till. */
+private fun installCrashGuard() {
+    val previous = Thread.getDefaultUncaughtExceptionHandler()
+    Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+        runCatching {
+            val dir = java.io.File(System.getProperty("user.home"), ".deryaccount")
+            dir.mkdirs()
+            val log = java.io.File(dir, "crash-" + System.currentTimeMillis() + ".txt")
+            log.writeText(
+                buildString {
+                    appendLine("DeryAccount desktop crash")
+                    appendLine("when: " + java.time.Instant.now())
+                    val sw = java.io.StringWriter()
+                    error.printStackTrace(java.io.PrintWriter(sw))
+                    append(sw.toString())
+                }
+            )
+            javax.swing.SwingUtilities.invokeLater {
+                javax.swing.JOptionPane.showMessageDialog(
+                    null,
+                    "Something went wrong, but your data is safe.\n\n" +
+                        "A report was saved to:\n" + log.absolutePath + "\n\n" +
+                        "Close this message and carry on. If it repeats, send us that file.",
+                    "DeryAccount", javax.swing.JOptionPane.WARNING_MESSAGE
+                )
+            }
+        }
+        previous?.uncaughtException(thread, error)
+    }
+}
+
+fun main() {
+    installCrashGuard()
+    launchApp()
+}
+
+private fun launchApp() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "DeryAccount — Business Suite",
@@ -107,6 +148,11 @@ fun AppShell(app: AppState) {
                     "rooms" -> HotelGate(app) { RoomsScreen(app) }
                     "bookings" -> HotelGate(app) { BookingsScreen(app) }
                     "guests" -> HotelGate(app) { GuestsScreen(app) }
+                    "hotelrates" -> HotelGate(app) { RatesScreen(app) }
+                    "housekeeping" -> HotelGate(app) { HousekeepingScreen(app) }
+                    "hotelaudit" -> HotelGate(app) { NightAuditScreen(app) }
+                    "hotelagents" -> HotelGate(app) { AgentsScreen(app) }
+                    "hotelcalendar" -> HotelGate(app) { AvailabilityScreen(app) }
                     "hotelreports" -> HotelGate(app) { HotelReportsScreen(app) }
                     "hotelreceipts" -> HotelGate(app) { HotelReceiptsScreen(app) }
                     "hotelicence" -> HotelEditionScreen(app)

@@ -18,7 +18,12 @@ object Fmt {
 
     fun r2(v: Double): Double = (v * 100.0).roundToLong() / 100.0
 
+    private val thousand = java.text.DecimalFormat("#,##0", java.text.DecimalFormatSymbols(Locale.US))
+
     fun money(v: Double): String = "UGX " + plain.format(v)
+
+    /** Whole shillings — dashboard and rate figures read better without cents. */
+    fun money0(v: Double): String = "UGX " + thousand.format(Math.round(v))
 
     fun moneySigned(v: Double): String = if (v < 0) "-UGX " + plain.format(abs(v)) else money(v)
 

@@ -272,7 +272,8 @@ class Hotel(private val repo: Repo) {
         guestName: String, guestPhone: String, roomId: String, checkIn: String, checkOut: String,
         adults: Int = 1, children: Int = 0, rate: Double? = null, source: String = "WALK_IN",
         notes: String = "", deposit: Double = 0.0, depositMethod: String = "CASH",
-        guestId: String? = null, userId: String = "u-owner"
+        guestId: String? = null, userId: String = "u-owner",
+        agentName: String = "", groupName: String = "", commissionPct: Double? = null
     ): String {
         require(guestName.isNotBlank()) { "Who is the guest?" }
         val room = room(roomId) ?: error("Pick a room")
@@ -290,10 +291,17 @@ class Hotel(private val repo: Repo) {
                 "check_in_date" to checkIn.take(10), "check_out_date" to checkOut.take(10),
                 "adults" to adults, "children" to children, "nights" to n.toInt(), "rate" to nightRate,
                 "status" to BOOKED, "source" to source, "notes" to notes,
+                "agent_id" to (agents().firstOrNull { it.str("name").equals(agentName.trim(), true) }?.str("id") ?: ""),
+                "group_name" to groupName.trim(),
                 "invoice_total" to Fmt.r2(nightRate * n), "paid_total" to 0.0,
                 "user_id" to userId, "branch_id" to repo.branchId(),
                 "created_at" to now, "updated_at" to now
             ))
+            val namedAgent = agents().firstOrNull { it.str("name").equals(agentName.trim(), true) }
+            if (namedAgent != null) {
+                val pct = commissionPct ?: namedAgent.dbl("commission_pct")
+                db.update("bookings", id, mapOf("agent_name" to namedAgent.str("name"), "commission_pct" to pct))
+            }
             if (deposit > 0) postPaymentInternal(id, deposit, depositMethod, "Deposit at booking", userId)
         }
         return id
@@ -559,14 +567,6 @@ class Hotel(private val repo: Repo) {
            ORDER BY h.created_at DESC"""
     )
 
-    fun raiseTask(roomId: String, kind: String, note: String, assignedTo: String = "") {
-        db.insert("housekeeping_tasks", mapOf(
-            "id" to UUID.randomUUID().toString(), "room_id" to roomId, "kind" to kind.uppercase(),
-            "note" to note, "status" to "OPEN", "assigned_to" to assignedTo, "created_at" to Clock.nowIso()
-        ))
-        if (kind.uppercase() == "MAINTENANCE") setRoomStatus(roomId, OUT_OF_ORDER)
-    }
-
     fun completeTask(taskId: String) {
         val t = db.one("SELECT * FROM housekeeping_tasks WHERE id=?", taskId) ?: return
         db.tx {
@@ -583,6 +583,11 @@ class Hotel(private val repo: Repo) {
         """SELECT b.*, r.number AS room_number, t.name AS type_name FROM bookings b
            LEFT JOIN rooms r ON r.id=b.room_id LEFT JOIN room_types t ON t.id=b.room_type_id
            WHERE b.status='BOOKED' AND b.check_in_date<=? ORDER BY r.number""", Clock.today()
+    )
+
+    fun departuresOn(date: String): List<Row> = db.q(
+        """SELECT b.*, r.number AS room_number FROM bookings b LEFT JOIN rooms r ON r.id=b.room_id
+           WHERE b.check_out_date=? AND b.status IN ('BOOKED','CHECKED_IN') ORDER BY r.number""", date.take(10)
     )
 
     fun departuresToday(): List<Row> = db.q(
@@ -737,4 +742,389 @@ class Hotel(private val repo: Repo) {
     }
 
     fun hasRooms(): Boolean = db.count("rooms", "is_active=1") > 0
+
+    /** Live bookings touching a window, for the availability grid. */
+    fun bookingsBetween(from: String, to: String): List<Row> = db.q(
+        """SELECT b.*, r.number AS room_number FROM bookings b
+           LEFT JOIN rooms r ON r.id = b.room_id
+           WHERE b.status IN (?, ?) AND b.check_in_date < ? AND b.check_out_date > ?
+           ORDER BY b.check_in_date""", BOOKED, CHECKED_IN, to, from
+    )
+
+    // ══ Yanolja-parity additions ══════════════════════════════════════════════
+    // Rates, agents and city ledger, night audit, housekeeping board and
+    // maintenance — all offline, on the same SQLite file.
+
+    private fun isWeekend(date: String): Boolean = runCatching {
+        val d = java.time.LocalDate.parse(date.take(10)).dayOfWeek
+        d == java.time.DayOfWeek.SATURDAY || d == java.time.DayOfWeek.SUNDAY
+    }.getOrDefault(false)
+
+    /** The price a room type actually sells for on one night. */
+    fun rateFor(roomTypeId: String, date: String): Double {
+        val override = db.one(
+            "SELECT rate FROM rate_overrides WHERE room_type_id=? AND rate_date=? LIMIT 1",
+            roomTypeId, date.take(10)
+        )?.dbl("rate")
+        if (override != null && override > 0) return Fmt.r2(override)
+
+        val base = roomType(roomTypeId)?.dbl("base_rate") ?: 0.0
+        val plans = db.q(
+            """SELECT * FROM rate_plans
+               WHERE is_active=1 AND (room_type_id=? OR room_type_id IS NULL OR room_type_id='')
+                 AND (valid_from IS NULL OR valid_from='' OR valid_from<=?)
+                 AND (valid_to   IS NULL OR valid_to=''   OR valid_to>=?)
+               ORDER BY price_delta DESC""",
+            roomTypeId, date.take(10), date.take(10)
+        )
+        if (plans.isEmpty()) return Fmt.r2(base)
+        // The highest-priced active plan wins (a package beats the bare room).
+        val best = plans.maxByOrNull { it.dbl("price_delta") }!!
+        val weekend = if (isWeekend(date)) best.dbl("weekend_delta") else 0.0
+        return Fmt.r2(base + best.dbl("price_delta") + weekend)
+    }
+
+    fun ratePlans(activeOnly: Boolean = false): List<Row> = db.q(
+        if (activeOnly) "SELECT * FROM rate_plans WHERE is_active=1 ORDER BY name"
+        else "SELECT * FROM rate_plans ORDER BY is_active DESC, name"
+    )
+
+    fun saveRatePlan(
+        id: String?, name: String, roomTypeId: String?, kind: String = "EP",
+        priceDelta: Double = 0.0, validFrom: String = "", validTo: String = "",
+        weekendDelta: Double = 0.0, minNights: Int = 1, active: Boolean = true
+    ): String {
+        require(name.isNotBlank()) { "Give the rate plan a name" }
+        val now = Clock.nowIso()
+        val values = mapOf(
+            "name" to name.trim(), "room_type_id" to (roomTypeId ?: ""), "kind" to kind,
+            "price_delta" to Fmt.r2(priceDelta), "valid_from" to validFrom.take(10),
+            "valid_to" to validTo.take(10), "weekend_delta" to Fmt.r2(weekendDelta),
+            "min_nights" to minNights.coerceAtLeast(1), "is_active" to if (active) 1 else 0,
+            "updated_at" to now
+        )
+        return db.tx {
+            if (id == null) db.insert("rate_plans", values + mapOf("id" to UUID.randomUUID().toString(), "created_at" to now))
+            else { db.update("rate_plans", id, values); id }
+        }
+    }
+
+    fun setRatePlanActive(id: String, active: Boolean) =
+        db.update("rate_plans", id, mapOf("is_active" to if (active) 1 else 0, "updated_at" to Clock.nowIso()))
+
+    fun deleteRatePlan(id: String) = db.delete("rate_plans", id)
+
+    fun setRateOverride(roomTypeId: String, date: String, rate: Double?) {
+        val d = date.take(10)
+        db.exec("DELETE FROM rate_overrides WHERE room_type_id=? AND rate_date=?", roomTypeId, d)
+        if (rate != null && rate > 0) {
+            db.insert("rate_overrides", mapOf(
+                "id" to UUID.randomUUID().toString(), "room_type_id" to roomTypeId,
+                "rate_date" to d, "rate" to Fmt.r2(rate), "created_at" to Clock.nowIso()
+            ))
+        }
+    }
+
+    /** A day-by-day price board for a room type. */
+    fun rateCalendar(roomTypeId: String, days: Int = 14): List<Pair<String, Double>> =
+        (0 until days).map { i -> addDays(Clock.today(), i.toLong()) }.map { d -> d to rateFor(roomTypeId, d) }
+
+    // ── Agents, corporate accounts and the city ledger ───────────────────────
+
+    fun agents(activeOnly: Boolean = false): List<Row> = db.q(
+        if (activeOnly) "SELECT * FROM agents WHERE is_active=1 ORDER BY name"
+        else "SELECT * FROM agents ORDER BY is_active DESC, name"
+    )
+
+    fun agent(id: String): Row? = db.one("SELECT * FROM agents WHERE id=?", id)
+
+    fun saveAgent(
+        id: String?, name: String, kind: String = "TRAVEL_AGENT", contact: String = "",
+        phone: String = "", email: String = "", commissionPct: Double = 0.0,
+        creditLimit: Double = 0.0, notes: String = "", active: Boolean = true
+    ): String {
+        require(name.isNotBlank()) { "Agent name is required" }
+        val now = Clock.nowIso()
+        val values = mapOf(
+            "name" to name.trim(), "kind" to kind, "contact" to contact.trim(),
+            "phone" to phone.trim(), "email" to email.trim(),
+            "commission_pct" to commissionPct.coerceIn(0.0, 100.0),
+            "credit_limit" to Fmt.r2(creditLimit), "notes" to notes.trim(),
+            "is_active" to if (active) 1 else 0, "updated_at" to now
+        )
+        return db.tx {
+            if (id == null) db.insert("agents", values + mapOf("id" to UUID.randomUUID().toString(), "created_at" to now))
+            else { db.update("agents", id, values); id }
+        }
+    }
+
+    fun agentBookings(agentId: String, limit: Int = 200): List<Row> = db.q(
+        """SELECT b.*, r.number AS room_number FROM bookings b LEFT JOIN rooms r ON r.id=b.room_id
+           WHERE b.agent_id=? ORDER BY b.check_in_date DESC LIMIT ?""",
+        agentId, limit
+    )
+
+    /** What an agent owes us, booking by booking, with its commission. */
+    data class AgentLine(val ref: String, val guest: String, val inDate: String, val outDate: String,
+                         val gross: Double, val paid: Double, val commission: Double, val due: Double)
+
+    fun agentStatement(agentId: String): List<AgentLine> {
+        val pct = agent(agentId)?.dbl("commission_pct") ?: 0.0
+        return agentBookings(agentId).filter { it.str("status") != CANCELLED }.map { b ->
+            val gross = b.dbl("invoice_total")
+            val paid = b.dbl("paid_total")
+            val commission = Fmt.r2(gross * pct / 100.0)
+            AgentLine(b.str("ref_no"), b.str("guest_name"), b.str("check_in_date"),
+                b.str("check_out_date"), gross, paid, commission, Fmt.r2(gross - commission - paid))
+        }
+    }
+
+    fun agentBalance(agentId: String): Double = agentStatement(agentId).sumOf { it.due }
+
+    fun agentInvoices(agentId: String? = null): List<Row> = if (agentId == null)
+        db.q("""SELECT i.*, a.name AS agent_name FROM agent_invoices i
+               LEFT JOIN agents a ON a.id=i.agent_id ORDER BY i.issued_at DESC""")
+    else db.q("""SELECT i.*, a.name AS agent_name FROM agent_invoices i
+                 LEFT JOIN agents a ON a.id=i.agent_id WHERE i.agent_id=? ORDER BY i.issued_at DESC""", agentId)
+
+    /** Bills an agent for everything unbilled between two dates. */
+    fun createAgentInvoice(agentId: String, from: String, to: String, dueDays: Int = 14): String {
+        val a = agent(agentId) ?: error("Agent not found")
+        val lines = agentStatement(agentId).filter { it.due > 0.5 }
+        require(lines.isNotEmpty()) { "Nothing owing to ${a.str("name")} right now" }
+        val total = Fmt.r2(lines.sumOf { it.due })
+        val no = "AG-" + (db.count("agent_invoices") + 1).toString().padStart(4, '0')
+        val id = UUID.randomUUID().toString()
+        db.insert("agent_invoices", mapOf(
+            "id" to id, "agent_id" to agentId, "invoice_no" to no,
+            "period_from" to from.take(10), "period_to" to to.take(10),
+            "amount" to total, "paid" to 0.0, "status" to "OPEN",
+            "issued_at" to Clock.nowIso(), "due_date" to addDays(Clock.today(), dueDays.toLong()),
+            "note" to "${lines.size} stay(s)", "created_at" to Clock.nowIso()
+        ))
+        return id
+    }
+
+    fun payAgentInvoice(invoiceId: String, amount: Double, note: String = "") {
+        require(amount > 0) { "Amount must be more than zero" }
+        val inv = db.one("SELECT * FROM agent_invoices WHERE id=?", invoiceId) ?: error("Invoice not found")
+        val paid = Fmt.r2(inv.dbl("paid") + amount)
+        val status = if (paid >= inv.dbl("amount") - 0.5) "PAID" else "PART"
+        db.update("agent_invoices", invoiceId, mapOf("paid" to paid, "status" to status, "note" to note))
+    }
+
+    /** Ageing of what agents owe, in the buckets a hotel actually chases. */
+    data class Ageing(val current: Double, val d30: Double, val d60: Double, val d90: Double) {
+        val total: Double get() = current + d30 + d60 + d90
+    }
+
+    fun agentAgeing(): Ageing {
+        var current = 0.0; var d30 = 0.0; var d60 = 0.0; var d90 = 0.0
+        agentInvoices().filter { it.str("status") != "PAID" }.forEach { inv ->
+            val outstanding = Fmt.r2(inv.dbl("amount") - inv.dbl("paid"))
+            if (outstanding <= 0) return@forEach
+            val days = runCatching {
+                java.time.temporal.ChronoUnit.DAYS.between(
+                    java.time.LocalDate.parse(inv.str("due_date").take(10)), java.time.LocalDate.now()
+                ).toInt()
+            }.getOrDefault(0)
+            when {
+                days <= 0 -> current += outstanding
+                days <= 30 -> d30 += outstanding
+                days <= 60 -> d60 += outstanding
+                else -> d90 += outstanding
+            }
+        }
+        return Ageing(Fmt.r2(current), Fmt.r2(d30), Fmt.r2(d60), Fmt.r2(d90))
+    }
+
+    // ── Night audit ──────────────────────────────────────────────────────────
+
+    fun lastAudit(): Row? = db.one("SELECT * FROM night_audits ORDER BY business_date DESC LIMIT 1")
+
+    /** The date the hotel is working on: the day after the last closed audit. */
+    fun businessDate(): String {
+        val last = lastAudit() ?: return Clock.today()
+        // The night audit usually runs after midnight, so closing today's day
+        // legitimately moves the hotel onto tomorrow's date.
+        return addDays(last.str("business_date"), 1)
+    }
+
+    fun audits(limit: Int = 60): List<Row> =
+        db.q("SELECT * FROM night_audits ORDER BY business_date DESC LIMIT ?", limit)
+
+    data class AuditSummary(
+        val businessDate: String, val roomsAvailable: Int, val roomsSold: Int, val occupancy: Double,
+        val revenue: Double, val payments: Double, val deposits: Double, val noShows: Int,
+        val arrivals: Int, val inHouse: Int, val departures: Int,
+        val byKind: List<RevenueLine>, val byMethod: List<RevenueLine>
+    )
+
+    /** A blank day, so a screen never has to deal with a null summary. */
+    fun emptySummary(date: String): AuditSummary = AuditSummary(
+        businessDate = date, roomsAvailable = 0, roomsSold = 0, occupancy = 0.0,
+        revenue = 0.0, payments = 0.0, deposits = 0.0, noShows = 0,
+        arrivals = 0, inHouse = 0, departures = 0, byKind = emptyList(), byMethod = emptyList()
+    )
+
+    fun auditSummary(date: String = businessDate()): AuditSummary {
+        val d = date.take(10)
+        val available = db.count("rooms", "is_active=1")
+        val sold = db.q(
+            """SELECT COUNT(DISTINCT room_id) AS n FROM bookings
+               WHERE status IN ('CHECKED_IN','CHECKED_OUT')
+                 AND check_in_date<=? AND check_out_date>?""", d, d
+        ).firstOrNull()?.dbl("n")?.toInt() ?: 0
+        val revenue = db.scalar(
+            "SELECT COALESCE(SUM(amount),0) FROM folio_charges WHERE charge_date=?", d
+        )
+        val payments = db.scalar(
+            "SELECT COALESCE(SUM(amount),0) FROM hotel_payments WHERE substr(paid_at,1,10)=?", d
+        )
+        val deposits = depositsHeld()
+        val noShows = db.count("bookings", "status='BOOKED' AND check_in_date<=?", d)
+        val arrivals = db.count("bookings", "check_in_date=? AND status IN ('BOOKED','CHECKED_IN')", d)
+        val inHouse = db.count("bookings", "status='CHECKED_IN'")
+        val departures = db.count("bookings", "check_out_date=? AND status IN ('BOOKED','CHECKED_IN')", d)
+        val byKind = db.q(
+            """SELECT kind AS label, COALESCE(SUM(amount),0) AS amount FROM folio_charges
+               WHERE charge_date=? GROUP BY kind ORDER BY amount DESC""", d
+        ).map { RevenueLine(kindLabel(it.str("kind")), Fmt.r2(it.dbl("amount"))) }
+        val byMethod = db.q(
+            """SELECT method AS label, COALESCE(SUM(amount),0) AS amount FROM hotel_payments
+               WHERE substr(paid_at,1,10)=? GROUP BY method ORDER BY amount DESC""", d
+        ).map { RevenueLine(it.str("label").replace("_", " "), Fmt.r2(it.dbl("amount"))) }
+        return AuditSummary(
+            d, available, sold, if (available > 0) sold * 100.0 / available else 0.0,
+            Fmt.r2(revenue), Fmt.r2(payments), Fmt.r2(deposits), noShows, arrivals, inHouse, departures,
+            byKind, byMethod
+        )
+    }
+
+    /** Closes the business day: flags no-shows, snapshots the day, moves the date on. */
+    fun closeNightAudit(date: String = businessDate(), userId: String = "u-owner", markNoShows: Boolean = true): String {
+        val d = date.take(10)
+        check(audits().none { it.str("business_date") == d }) { "$d is already closed" }
+        val summary = auditSummary(d)
+        var noShows = 0
+        if (markNoShows) {
+            db.q("SELECT * FROM bookings WHERE status='BOOKED' AND check_in_date=?", d).forEach { b ->
+                db.update("bookings", b.str("id"), mapOf(
+                    "status" to NO_SHOW, "updated_at" to Clock.nowIso(),
+                    "cancel_reason" to "No show on $d"
+                ))
+                noShows++
+            }
+        }
+        val id = UUID.randomUUID().toString()
+        db.insert("night_audits", mapOf(
+            "id" to id, "business_date" to d, "closed_at" to Clock.nowIso(), "closed_by" to userId,
+            "rooms_sold" to summary.roomsSold, "rooms_available" to summary.roomsAvailable,
+            "revenue" to summary.revenue, "payments" to summary.payments, "no_shows" to noShows,
+            "note" to "Occupancy ${Fmt.pct(summary.occupancy / 100.0)}"
+        ))
+        return id
+    }
+
+    // ── Housekeeping board and maintenance ───────────────────────────────────
+
+    data class Board(val room: Row, val status: String, val guest: String, val openTasks: Int, val priority: String)
+
+    fun housekeepingBoard(): List<Board> = rooms().map { r ->
+        val rid = r.str("id")
+        val tasks = db.q(
+            "SELECT * FROM housekeeping_tasks WHERE room_id=? AND status='OPEN'", rid
+        )
+        val occupant = db.one(
+            """SELECT guest_name FROM bookings WHERE room_id=? AND status='CHECKED_IN' LIMIT 1""", rid
+        )?.str("guest_name") ?: ""
+        Board(
+            r, r.str("status"), occupant, tasks.size,
+            if (tasks.any { it.str("priority") == "URGENT" }) "URGENT"
+            else if (tasks.any { it.str("priority") == "HIGH" }) "HIGH" else "NORMAL"
+        )
+    }
+
+    fun raiseTask(roomId: String, kind: String, note: String, assignedTo: String = "",
+                  priority: String = "NORMAL") {
+        db.insert("housekeeping_tasks", mapOf(
+            "id" to UUID.randomUUID().toString(), "room_id" to roomId, "kind" to kind.uppercase(),
+            "note" to note.trim(), "status" to "OPEN", "priority" to priority,
+            "assigned_to" to assignedTo.trim(), "created_at" to Clock.nowIso(),
+            "updated_at" to Clock.nowIso()
+        ))
+        if (kind.uppercase() == "MAINTENANCE") setRoomStatus(roomId, OUT_OF_ORDER)
+    }
+
+    fun setTaskPriority(taskId: String, priority: String) =
+        db.update("housekeeping_tasks", taskId, mapOf("priority" to priority, "updated_at" to Clock.nowIso()))
+
+    /** One task per departure, so the board knows what today needs. */
+    fun buildHousekeepingList(date: String = Clock.today()): Int {
+        var made = 0
+        departuresOn(date).forEach { b ->
+            val roomId = b.str("room_id")
+            val exists = db.one(
+                """SELECT id FROM housekeeping_tasks WHERE room_id=? AND status='OPEN' AND kind='CHECKOUT CLEAN'""",
+                roomId
+            )
+            if (exists == null) {
+                raiseTask(roomId, "CHECKOUT CLEAN", "Departure ${b.str("guest_name")}", priority = "HIGH")
+                made++
+            }
+        }
+        rooms().filter { it.str("status") == VACANT_DIRTY }.forEach { r ->
+            val exists = db.one(
+                "SELECT id FROM housekeeping_tasks WHERE room_id=? AND status='OPEN' AND kind='CLEAN'",
+                r.str("id")
+            )
+            if (exists == null) { raiseTask(r.str("id"), "CLEAN", "Room left dirty", priority = "NORMAL"); made++ }
+        }
+        return made
+    }
+
+    fun maintenanceTickets(openOnly: Boolean = true): List<Row> = db.q(
+        """SELECT m.*, r.number AS room_number FROM maintenance_tickets m
+           LEFT JOIN rooms r ON r.id=m.room_id
+           ${if (openOnly) "WHERE m.status<>'DONE'" else ""}
+           ORDER BY CASE m.priority WHEN 'URGENT' THEN 0 WHEN 'HIGH' THEN 1 ELSE 2 END, m.created_at DESC"""
+    )
+
+    fun raiseMaintenance(roomId: String, issue: String, priority: String = "NORMAL", reportedBy: String = "") {
+        require(issue.isNotBlank()) { "What is the problem?" }
+        db.insert("maintenance_tickets", mapOf(
+            "id" to UUID.randomUUID().toString(), "room_id" to roomId, "issue" to issue.trim(),
+            "priority" to priority, "status" to "OPEN", "reported_by" to reportedBy,
+            "cost" to 0.0, "created_at" to Clock.nowIso()
+        ))
+        setRoomStatus(roomId, OUT_OF_ORDER)
+    }
+
+    fun closeMaintenance(ticketId: String, cost: Double = 0.0, note: String = "") {
+        val ticket = db.one("SELECT * FROM maintenance_tickets WHERE id=?", ticketId) ?: return
+        db.update("maintenance_tickets", ticketId, mapOf(
+            "status" to "DONE", "cost" to Fmt.r2(cost), "done_at" to Clock.nowIso()
+        ))
+        // Fixed, but it still has to be cleaned before the next guest.
+        val roomId = ticket.str("room_id")
+        if (roomId.isNotBlank()) setRoomStatus(roomId, VACANT_DIRTY)
+    }
+
+    // ── Upsells: the extras a front desk sells every day ─────────────────────
+
+    data class Upsell(val label: String, val kind: String, val price: Double)
+
+    val UPSELLS = listOf(
+        Upsell("Late checkout", "EXTRA", 20_000.0),
+        Upsell("Early check-in", "EXTRA", 20_000.0),
+        Upsell("Breakfast", "RESTAURANT", 15_000.0),
+        Upsell("Airport transfer", "EXTRA", 80_000.0),
+        Upsell("Laundry", "LAUNDRY", 10_000.0),
+        Upsell("Extra bed", "EXTRA", 25_000.0),
+        Upsell("Room upgrade", "EXTRA", 50_000.0),
+        Upsell("Minibar", "BAR", 12_000.0)
+    )
+
+    fun addUpsell(bookingId: String, upsell: Upsell, qty: Int = 1, userId: String = "u-owner") =
+        addCharge(bookingId, upsell.kind, upsell.label, qty.toDouble(), upsell.price, userId = userId)
 }
