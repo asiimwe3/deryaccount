@@ -3,6 +3,7 @@ package com.derycode.deryaccount.data.repository
 import android.content.Context
 import androidx.room.withTransaction
 import com.derycode.deryaccount.data.local.AppDatabase
+import com.derycode.deryaccount.accounting.Money
 import com.derycode.deryaccount.data.local.entity.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -49,16 +50,19 @@ class PosRepository(private val context: Context, private val db: AppDatabase) {
         val now = nowIso()
         val saleId = UUID.randomUUID().toString()
 
-        val subtotal = lines.sumOf { it.lineTotal }
-        val taxTotal = 0.0 // VAT support: lines.sumOf { it.lineTotal * it.product.taxRate / 100 }
-        val total = ((subtotal + taxTotal - discount) * 100).roundToInt() / 100.0
-        val change = ((amountPaid - total) * 100).roundToInt() / 100.0
-
-        val receiptNo = generateReceiptNo(branchId)
+        // VAT comes from each product's own rate (0 = exempt), applied to a
+        // VAT-inclusive shelf price. Money owns the rounding so the receipt,
+        // the customer balance and the ledger all agree to the cent.
+        val totals = Money.totals(lines.map { it.lineTotal to it.product.taxRate }, discount)
+        val subtotal = totals.subtotal
+        val taxTotal = totals.taxTotal
+        val total = totals.total
+        val change = Money.changeDue(total, amountPaid)
+        val unpaid = Money.outstanding(total, amountPaid)
 
         val sale = Sale(
             id = saleId,
-            receiptNo = receiptNo,
+            receiptNo = "",            // allocated inside the transaction below
             branchId = branchId,
             userId = userId,
             customerId = customerId,
@@ -78,7 +82,8 @@ class PosRepository(private val context: Context, private val db: AppDatabase) {
             isDeleted = false
         )
 
-        val items = lines.map {
+        val itemsFor: (String) -> List<SaleItem> = { receipt ->
+        lines.map {
             SaleItem(
                 id = UUID.randomUUID().toString(),
                 saleId = saleId,
@@ -90,8 +95,10 @@ class PosRepository(private val context: Context, private val db: AppDatabase) {
                 lineTotal = it.lineTotal
             )
         }
+        }
 
-        val movements = lines.map {
+        val movementsFor: (String) -> List<StockMovement> = { receipt ->
+        lines.map {
             StockMovement(
                 id = UUID.randomUUID().toString(),
                 productId = it.product.id,
@@ -99,14 +106,23 @@ class PosRepository(private val context: Context, private val db: AppDatabase) {
                 type = "SALE",
                 qty = -it.qty,
                 reference = saleId,
-                note = receiptNo,
+                note = receipt,
                 movedAt = now,
                 createdAt = now, updatedAt = now,
                 syncState = "pending", isDeleted = false
             )
         }
+        }
 
+        var receiptNo = ""
         db.withTransaction {
+            // Allocated INSIDE the transaction: Room serialises writers, so two
+            // tills checking out at the same moment can no longer take the same
+            // sequence number (the old code counted before the transaction).
+            receiptNo = generateReceiptNo(branchId)
+            val sale = sale.copy(receiptNo = receiptNo)
+            val items = itemsFor(receiptNo)
+            val movements = movementsFor(receiptNo)
             db.saleDao().upsert(sale)
             db.saleItemDao().upsertAll(items)
             db.stockMovementDao().upsertAll(movements)
@@ -119,14 +135,14 @@ class PosRepository(private val context: Context, private val db: AppDatabase) {
             //   totalPaid grows by what was actually received (deposit now, or full cash sale)
             if (customerId != null) {
                 db.customerDao().get(customerId)?.let { c ->
-                    val unpaid = if (paymentMethod == "CREDIT")
-                        (total - amountPaid).coerceAtLeast(0.0) else 0.0
-                    val receivedNow = if (paymentMethod == "CREDIT")
-                        amountPaid.coerceAtLeast(0.0) else total   // cash sale: fully settled (change returned)
+                    // Part payment is honoured on every method, not just CREDIT:
+                    // anything not received becomes a debtor balance.
+                    val owed = unpaid
+                    val receivedNow = Money.round2(amountPaid.coerceAtLeast(0.0) - change)
                     db.customerDao().upsert(c.copy(
-                        balance = c.balance + unpaid,
-                        totalPurchases = c.totalPurchases + total,
-                        totalPaid = c.totalPaid + receivedNow,
+                        balance = Money.round2(c.balance + owed),
+                        totalPurchases = Money.round2(c.totalPurchases + total),
+                        totalPaid = Money.round2(c.totalPaid + receivedNow),
                         updatedAt = now, syncState = "pending"))
                 }
             }
@@ -139,22 +155,23 @@ class PosRepository(private val context: Context, private val db: AppDatabase) {
                 total, paymentMethod, receiptNo,
                 items.size,
                 lines.sumOf { it.qty * it.product.costPrice },
-                gross = subtotal + taxTotal,      // Sales at FULL price before discount
-                discount = discount              // discount → Sales Discounts account
+                gross = subtotal,                // tax-inclusive price before discount
+                discount = discount,             // discount → Sales Discounts account
+                tax = taxTotal                   // VAT Payable is credited, Sales stays net
             )
         }
 
-        return CheckoutResult(sale, items, change, createdOffline = true)
+        return CheckoutResult(sale.copy(receiptNo = receiptNo), itemsFor(receiptNo), change, createdOffline = true)
     }
 
     /** BRANCHCODE-YYYYMMDD-#### — monotonic per branch per day, offline safe. */
     private suspend fun generateReceiptNo(branchId: String): String {
         val branch = db.branchDao().get(branchId)
-        val code = branch?.name?.take(3)?.uppercase(Locale.US)?.padEnd(3, 'X') ?: "BRX"
+        val code = branch?.name?.take(3)?.uppercase(Locale.US) ?: "BRX"
         val date = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
-        val isoDate = "${date.subSequence(0, 4)}-${date.substring(4, 6)}-${date.substring(6, 8)}"
+        val isoDate = "${date.substring(0, 4)}-${date.substring(4, 6)}-${date.substring(6, 8)}"
         val count = db.saleDao().countBetween(branchId, "${isoDate}T00:00:00", "${isoDate}T23:59:59")
-        return "$code-$date-%04d".format(count + 1)
+        return Money.receiptNo(code, date, count + 1)
     }
 
     private fun nowIso(): String =
