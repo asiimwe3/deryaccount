@@ -33,6 +33,7 @@ fun LoginScreen(
     onLoggedIn: (userId: String, username: String, role: String, branchId: String, branchName: String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var username by remember { mutableStateOf("") }
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -96,7 +97,7 @@ fun LoginScreen(
                                 createdAt = now, updatedAt = now))
                             db.userDao().upsert(com.derycode.deryaccount.data.local.entity.User(
                                 id = userId, username = username.lowercase(),
-                                pinHash = SessionManager.sha256(pin), fullName = "Owner",
+                                pinHash = com.derycode.deryaccount.security.PinHasher.hash(pin), fullName = "Owner",
                                 role = "OWNER", branchId = branchId,
                                 createdAt = now, updatedAt = now))
                             session.saveLogin(userId, username.lowercase(), "OWNER", branchId, branchName)
@@ -104,7 +105,30 @@ fun LoginScreen(
                         } else {
                             val u = db.userDao().byUsername(username.lowercase())
                             if (u == null) { error = "User not found"; return@launch }
-                            if (u.pinHash != SessionManager.sha256(pin)) { error = "Wrong PIN"; return@launch }
+
+                            // Throttle: five wrong PINs lock this username for 60s, so a
+                            // stranger with the phone cannot sit and guess 0000-9999.
+                            val waitMs = com.derycode.deryaccount.security.LoginThrottle.remainingMillis(context, u.username)
+                            if (waitMs > 0) {
+                                error = "Too many wrong PINs. Try again in ${(waitMs / 1000) + 1}s"
+                                return@launch
+                            }
+
+                            if (!com.derycode.deryaccount.security.PinHasher.verify(pin, u.pinHash)) {
+                                val left = com.derycode.deryaccount.security.LoginThrottle.recordFailure(context, u.username)
+                                error = if (left > 0) "Wrong PIN. $left attempt${if (left == 1) "" else "s"} left"
+                                        else "Wrong PIN. Locked for 60s"
+                                return@launch
+                            }
+                            com.derycode.deryaccount.security.LoginThrottle.clear(context, u.username)
+
+                            // A PIN stored by an older build is re-hashed now that we know
+                            // it is correct: nobody is locked out, and the weak hash goes away.
+                            if (com.derycode.deryaccount.security.PinHasher.needsUpgrade(u.pinHash)) {
+                                db.userDao().upsert(u.copy(
+                                    pinHash = com.derycode.deryaccount.security.PinHasher.hash(pin),
+                                    updatedAt = now))
+                            }
                             val b = db.branchDao().get(u.branchId)
                             session.saveLogin(u.id, u.username, u.role, u.branchId, b?.name ?: "")
                             onLoggedIn(u.id, u.username, u.role, u.branchId, b?.name ?: "")

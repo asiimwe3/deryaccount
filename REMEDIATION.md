@@ -27,13 +27,13 @@ Statuses: `Not Started` · `In Progress` · `Fixed` · `Tested` · `Verified`
 | 12 | Transactional, balanced journal | **Tested** | `AccountingRepo.post()` wrapped in `withTransaction`, `Money.requireBalanced` |
 | 2 | POS partial-payment accounting | **Tested** | `Money.outstanding/changeDue`, debt recorded for every method |
 | 13 | Duplicate receipt numbers | **Fixed** | receipt allocated inside the sale transaction; **unique index still to add (needs migration)** |
-| 6 | Password/PIN hashing | Not Started | `SessionManager.sha256(pin)` — unsalted SHA-256, trivially brute-forced for 4-digit PINs |
+| 6 | Password/PIN hashing | **Tested** | `security/PinHasher` (PBKDF2 150k, per-user salt), legacy upgrade-on-login, `security/LoginThrottle` — 8 unit tests |
 | 1 | Licensing secrets | Not Started | needs asymmetric signing + offline-issued codes; plan below |
 | 4 | Offline sync coverage | Not Started | sync engine exists; per-module coverage not yet audited |
 | 5 | Migration safety | Not Started (low risk) | migrations are explicit; needs `MigrationTestHelper` coverage |
 | 7 | Branch isolation | Not Started | needs query-by-branch audit across hotel/inventory/reports |
 | 8 | Cashier/staff permissions | Not Started | role checks are UI-level; repository has no guard |
-| 9 | Logout clears business settings | Not Started | `SessionManager.logout()` to be read and fixed |
+| 9 | Logout clears business settings | **Fixed** (compile-verified) | `logout()` now removes only the 5 session keys |
 | 10 | Backup/restore atomicity | Not Started | needs write-to-temp + validate + swap |
 | 11 | Auto-update asset names | **Fixed** (unverified) | `AutoUpdate.kt` points at `releases/latest/download/deryaccount.apk`; must confirm the release actually publishes that filename |
 | 14 | Hotel check-in/out consistency | Not Started | needs `withTransaction` audit of hotel repo |
@@ -78,9 +78,46 @@ Two of these tests **failed on the first run** and exposed a genuine bug in my o
 3. **Tax rates are per product only.** There is no business-wide default rate, so products created before this change still have `taxRate = 0` and will remain exempt until set.
 4. **`postSale` is called with `branchId = null`** (finding 15) — the ledger entries are not yet attributed to a branch.
 
+## Stage 2 — authentication and session (findings 6, 9)
+
+### `security/PinHasher.kt` (new)
+PINs were a bare `SHA-256(pin)`. A 4-digit PIN is 10,000 guesses, so that hash is reversible on the phone in well under a second — anyone who copied the database could read every cashier's PIN.
+
+- Stored format: `pbkdf2$<iterations>$<saltHex>$<hashHex>`, PBKDF2-HMAC-SHA1, 150,000 iterations, 16-byte per-user random salt, 256-bit output.
+- Salt means the same PIN never produces the same stored value, so a stolen table cannot be cross-referenced between shops or staff.
+- Comparison is constant-time.
+- **Legacy hashes still verify**, so no existing user is locked out; the record is re-hashed to PBKDF2 the moment that PIN is entered correctly (`needsUpgrade`).
+- Corrupt records fail closed instead of throwing, so a bad row cannot crash login.
+- Hex encoding, not `java.util.Base64`: that class needs Android 8 and this app still runs on Android 7 tablets (minSdk 24).
+
+### `security/LoginThrottle.kt` (new)
+Five wrong PINs lock that **username** for 60 seconds, counted in SharedPreferences so killing the app does not reset it. A correct PIN clears the counter. Locking is per user, so a careless cashier cannot lock the owner out.
+
+### `ui/auth/LoginScreen.kt`
+- First-run owner creation stores `PinHasher.hash(pin)`.
+- Sign-in verifies through `PinHasher`, reports remaining attempts, blocks while locked, and upgrades legacy hashes on success.
+- `LocalContext` bound for the throttle.
+
+### `util/SessionManager.kt`
+`logout()` called `dataStore.edit { it.clear() }`, wiping the business profile, logo, TIN, receipt footer, Supabase credentials and tutorial flag — a cashier tapping "Log out" reset the shop's identity. It now removes exactly the five session keys (`user_id`, `username`, `role`, `branch_id`, `branch_name`).
+
+### Tests executed
+`./gradlew :app:testDebugUnitTest` → **23 tests, 0 failures** (15 money + 8 PIN).
+`./gradlew :app:compileDebugKotlin` → success.
+
+PIN tests prove: correct PIN verifies; wrong PIN, longer PIN and empty PIN rejected; stored value never contains the plain SHA-256; same PIN hashes differently each time (salt); legacy SHA-256 record still verifies and is flagged for upgrade; corrupt/`null` records fail closed; a legacy hash cannot be replayed as a PBKDF2 record.
+
+**Not executed:** throttle timing on a device, and the login screen itself (no emulator here).
+
+### Remaining risks in Stage 2
+1. **Iteration count is untested on low-end hardware.** 150,000 PBKDF2 rounds may take ~300-600 ms on the cheapest tablets; if login feels slow on the shop's actual phone, lower it to 100,000 and re-measure rather than guessing.
+2. **Throttle is per device, not per account across devices** — acceptable offline, but it is not a substitute for server-side lockout once sync is live.
+3. **No forced PIN reset** for staff whose PIN was set by someone else; and PINs are still 4 digits, so entropy stays low even with a good KDF.
+4. `SessionManager.sha256` still exists for other call sites; it should be deleted once nothing else depends on it.
+
 ## Recommended next steps, in risk order
 
-1. **Auth hardening (finding 6).** Replace unsalted SHA-256 with PBKDF2/Argon2 + per-user salt + migration-on-next-login, add PIN attempt throttling. Highest real-world exposure for a shop full of staff.
+1. ~~Auth hardening (finding 6)~~ — done in Stage 2, pending device timing check.
 2. **Licensing (finding 1).** Move to Ed25519: private key stays offline (in the licence tool), public key ships in the app. Accept legacy HMAC codes during a transition window so existing activations keep working.
 3. **Branch isolation and permissions (7, 8).** Enforce `branchId` at the DAO level (no query without a branch predicate) and check role in the repository, not the screen.
 4. **Unique receipt index (13).** Migration 10→11 with a duplicate pre-scan that reports, never deletes.
