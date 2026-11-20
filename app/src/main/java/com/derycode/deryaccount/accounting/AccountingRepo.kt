@@ -1,5 +1,6 @@
 package com.derycode.deryaccount.accounting
 
+import androidx.room.withTransaction
 import com.derycode.deryaccount.data.local.AppDatabase
 import com.derycode.deryaccount.data.local.entity.Account
 import com.derycode.deryaccount.data.local.entity.JournalEntry
@@ -113,10 +114,11 @@ class AccountingRepo(private val db: AppDatabase) {
         credits: List<Pair<String, Double>>,
         branchId: String? = null
     ): String {
-        val d = debits.sumOf { it.second }
-        val c = credits.sumOf { it.second }
-        require(kotlin.math.abs(d - c) < 0.005) { "Entry does not balance: Dr $d vs Cr $c" }
-        require(d > 0) { "Entry amount must be greater than zero" }
+        // One rounding rule for the whole ledger, and no unbalanced entry can be
+        // written: the guard throws before anything touches the database.
+        val debitsR = debits.filter { it.second > 0.0 }.map { it.first to Money.round2(it.second) }
+        val creditsR = credits.filter { it.second > 0.0 }.map { it.first to Money.round2(it.second) }
+        Money.requireBalanced(particulars, debitsR.map { it.second }, creditsR.map { it.second })
 
         val prefix = when (source) {
             "POS" -> "POS"
@@ -126,18 +128,22 @@ class AccountingRepo(private val db: AppDatabase) {
             else -> "CB"
         }
         val entryId = UUID.randomUUID().toString()
-        db.journalDao().insertEntry(JournalEntry(
-            id = entryId,
-            entryDate = date ?: now(),
-            voucherNo = nextVoucher(prefix),
-            particulars = particulars,
-            source = source,
-            branchId = branchId
-        ))
-        db.journalDao().insertLines(
-            debits.map { JournalEntryLine(entryId, it.first, it.second, 0.0).toLine() } +
-            credits.map { JournalEntryLine(entryId, it.first, 0.0, it.second).toLine() }
-        )
+        // Header + lines in one transaction: a crash between the two used to leave
+        // an entry with no lines, which silently broke every trial balance.
+        db.withTransaction {
+            db.journalDao().insertEntry(JournalEntry(
+                id = entryId,
+                entryDate = date ?: now(),
+                voucherNo = nextVoucher(prefix),
+                particulars = particulars,
+                source = source,
+                branchId = branchId
+            ))
+            db.journalDao().insertLines(
+                debitsR.map { JournalEntryLine(entryId, it.first, it.second, 0.0).toLine() } +
+                creditsR.map { JournalEntryLine(entryId, it.first, 0.0, it.second).toLine() }
+            )
+        }
         return entryId
     }
 
@@ -169,7 +175,8 @@ class AccountingRepo(private val db: AppDatabase) {
      *  NET SALES = SALES − RETURNS − DISCOUNTS. `amount` is the net collected. */
     suspend fun postSale(amount: Double, method: String, receiptNo: String,
                         itemCount: Int = 0, costTotal: Double = 0.0,
-                        gross: Double = 0.0, discount: Double = 0.0) {
+                        gross: Double = 0.0, discount: Double = 0.0,
+                        tax: Double = 0.0) {
         val debitAccount = when (method) {
             "MTN_MOMO", "AIRTEL_MONEY" -> BANK
             "CREDIT" -> DEBTORS
@@ -178,10 +185,15 @@ class AccountingRepo(private val db: AppDatabase) {
         val detail = if (itemCount > 0) "$itemCount item${if (itemCount == 1) "" else "s"}" else "sale"
         val g = if (gross > 0) gross else amount
         if (g > 0) {
-            val debits = mutableListOf(debitAccount to amount)
-            if (discount > 0) debits.add(SALES_DISCOUNTS to discount)
+            val taxR = Money.round2(tax.coerceAtLeast(0.0))
+            val netRevenue = Money.round2(g - taxR)
+            val debits = mutableListOf(debitAccount to Money.round2(amount))
+            if (discount > 0) debits.add(SALES_DISCOUNTS to Money.round2(discount))
+            // Revenue excludes VAT; VAT Payable carries the tax until it is remitted.
+            val credits = mutableListOf(SALES to netRevenue)
+            if (taxR > 0.0) credits.add(VAT_OUT to taxR)
             post(particulars = "Sales — $detail ($receiptNo)", source = "POS",
-                debits = debits, credits = listOf(SALES to g))
+                debits = debits, credits = credits)
         }
         // Cost of sales: keeps the Stock account in step with physical stock
         if (costTotal > 0) {

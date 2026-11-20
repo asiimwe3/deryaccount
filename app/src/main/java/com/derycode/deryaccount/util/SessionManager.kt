@@ -121,7 +121,21 @@ class SessionManager(private val context: Context) {
         return url to key
     }
 
+    /**
+     * Signing out ends the *session* and nothing else.
+     *
+     * Audit finding 9: this used to call `it.clear()`, which also wiped the
+     * business profile, logo, TIN, receipt footer, Supabase credentials and the
+     * tutorial flag — a cashier tapping "Log out" quietly reset the shop's
+     * identity. Only the five session keys are removed now.
+     */
     suspend fun logout() {
-        context.dataStore.edit { it.clear() }
+        context.dataStore.edit {
+            it.remove(KEY_USER)
+            it.remove(KEY_USERNAME)
+            it.remove(KEY_ROLE)
+            it.remove(KEY_BRANCH)
+            it.remove(KEY_BRANCH_NAME)
+        }
     }
 }
