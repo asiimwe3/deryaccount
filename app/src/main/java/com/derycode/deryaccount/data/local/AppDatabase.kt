@@ -414,18 +414,78 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Swaps a staged restore into place — but only after proving the staged
+         * file is a real, readable SQLite database, and only after keeping a
+         * safety copy of what the shop has now.
+         *
+         * Audit finding 10: this used to delete the live database first and then
+         * rename, so a truncated or half-copied restore file destroyed the books.
+         * Now nothing is deleted until the replacement is verified, the old file
+         * is kept, and a failed swap leaves the shop exactly as it was.
+         */
         private fun applyPendingRestore(context: Context) {
+            val dbDir = context.getDatabasePath("deryaccount.db").parentFile ?: return
+            val pending = java.io.File(dbDir, "restore_pending.db")
+            if (!pending.exists()) return
+            val live = java.io.File(dbDir, "deryaccount.db")
+            val stamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US)
+                .format(java.util.Date())
             try {
-                val dbDir = context.getDatabasePath("deryaccount.db").parentFile ?: return
-                val pending = java.io.File(dbDir, "restore_pending.db")
-                if (!pending.exists() || pending.length() < 1024L) return
-                val live = java.io.File(dbDir, "deryaccount.db")
-                listOf("-wal", "-shm").forEach {
-                    java.io.File(dbDir, "deryaccount.db$it").delete()
+                // 1. Is the staged file even a database, and can SQLite open it?
+                if (!BackupIntegrity.looksLikeSqlite(pending)) {
+                    pending.delete()
+                    return
                 }
-                if (live.exists()) live.delete()
-                pending.renameTo(live)
-            } catch (_: Exception) { }
+                if (!isReadableDatabase(pending)) {
+                    pending.delete()
+                    return
+                }
+                // 2. Keep what the shop has right now, before touching anything.
+                if (live.exists()) {
+                    val safetyDir = java.io.File(dbDir, "pre_restore").apply { mkdirs() }
+                    val safety = java.io.File(safetyDir, "deryaccount_before_restore_$stamp.db")
+                    live.copyTo(safety, overwrite = true)
+                    if (!BackupIntegrity.looksLikeSqlite(safety)) {
+                        // We could not secure a copy, so we do not proceed.
+                        pending.delete()
+                        return
+                    }
+                }
+                // 3. Copy the staged database in (copy, not rename: the staged
+                //    file survives if anything goes wrong mid-write).
+                listOf("-wal", "-shm").forEach { java.io.File(dbDir, "deryaccount.db$it").delete() }
+                pending.copyTo(live, overwrite = true)
+                // 4. Only a byte-identical, still-readable live file counts as success.
+                if (!isReadableDatabase(live)) {
+                    val safetyDir = java.io.File(dbDir, "pre_restore")
+                    val safety = java.io.File(safetyDir, "deryaccount_before_restore_$stamp.db")
+                    if (safety.exists()) safety.copyTo(live, overwrite = true)
+                    pending.delete()
+                    return
+                }
+                pending.delete()
+            } catch (_: Throwable) {
+                // Never leave a half-applied restore behind.
+                try { if (!isReadableDatabase(live)) pending.delete() } catch (_: Throwable) {}
+            }
+        }
+
+        /** Opens the file read-only and asks SQLite itself whether it is sound. */
+        private fun isReadableDatabase(file: java.io.File): Boolean {
+            var db: android.database.sqlite.SQLiteDatabase? = null
+            return try {
+                db = android.database.sqlite.SQLiteDatabase.openDatabase(
+                    file.absolutePath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+                )
+                db.rawQuery("PRAGMA integrity_check", null).use { c ->
+                    c.moveToFirst() && c.getString(0).equals("ok", ignoreCase = true)
+                }
+            } catch (_: Throwable) {
+                false
+            } finally {
+                try { db?.close() } catch (_: Throwable) {}
+            }
         }
 
         fun get(context: Context): AppDatabase =
@@ -440,8 +500,9 @@ abstract class AppDatabase : RoomDatabase() {
                     // MUST ship as a real migration — a destructive fallback here
                     // would WIPE every shop's books on update.
                     .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
-                    // Kept only as a last resort for pre-accounting installs (DB v1).
-                    .fallbackToDestructiveMigration()
+                    // Destructive ONLY from v1 (pre-accounting installs). Any other
+                    // missing migration must crash loudly rather than wipe a shop's books.
+                    .fallbackToDestructiveMigrationFrom(1)
                     .build()
                     .also { INSTANCE = it }
             }

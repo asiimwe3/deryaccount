@@ -123,9 +123,24 @@ private fun buildBackup(context: Context): Pair<File, List<String>> {
     val backupDir = File(base, "backups").apply { mkdirs() }
     val stamp = java.text.SimpleDateFormat("yyyyMMdd_HHmm", java.util.Locale.US).format(java.util.Date())
     val zip = File(backupDir, "deryaccount_backup_$stamp.zip")
+    // Write to a .part file and rename only once the zip is complete, so an
+    // interrupted backup can never leave a truncated file that looks real.
+    val part = File(backupDir, "deryaccount_backup_$stamp.zip.part")
     val labels = mutableListOf<String>()
 
-    ZipOutputStream(zip.outputStream().buffered()).use { out ->
+    // Fold the write-ahead log back into the main file first. Without this the
+    // zip can miss the day's last sales, which is exactly what a shop needs back.
+    runCatching {
+        val live = context.getDatabasePath("deryaccount.db")
+        if (live.exists()) {
+            android.database.sqlite.SQLiteDatabase.openDatabase(
+                live.absolutePath, null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
+            ).use { db -> db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() } }
+        }
+    }
+
+    ZipOutputStream(part.outputStream().buffered()).use { out ->
         fun add(f: File, inZip: String, label: String) {
             if (!f.exists()) return
             out.putNextEntry(ZipEntry("DeryAccount/$inZip"))
@@ -145,6 +160,25 @@ private fun buildBackup(context: Context): Pair<File, List<String>> {
         if (dbPath.exists()) add(dbPath, "database/deryaccount.db", "database/deryaccount.db (all records)")
         val wal = File(dbPath.parentFile, "deryaccount.db-wal")
         if (wal.exists()) add(wal, "database/deryaccount.db-wal", "database/deryaccount.db-wal")
+
+        // Manifest last: a restore can then prove it has the same database it
+        // was told about, instead of trusting the file size.
+        if (dbPath.exists()) {
+            val manifest = com.derycode.deryaccount.data.local.BackupIntegrity.Manifest(
+                version = 1,
+                createdAt = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
+                    .format(java.util.Date()),
+                databaseSha256 = com.derycode.deryaccount.data.local.BackupIntegrity.sha256Hex(dbPath),
+                databaseBytes = dbPath.length()
+            )
+            out.putNextEntry(ZipEntry("DeryAccount/manifest.txt"))
+            out.write(manifest.encode().toByteArray())
+            out.closeEntry()
+            labels.add("manifest.txt (checksum of the database)")
+        }
     }
+    // Only now does the backup get its real name.
+    if (zip.exists()) zip.delete()
+    if (!part.renameTo(zip)) { part.copyTo(zip, overwrite = true); part.delete() }
     return zip to labels
 }

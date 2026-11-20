@@ -30,11 +30,11 @@ Statuses: `Not Started` · `In Progress` · `Fixed` · `Tested` · `Verified`
 | 6 | Password/PIN hashing | **Tested** | `security/PinHasher` (PBKDF2 150k, per-user salt), legacy upgrade-on-login, `security/LoginThrottle` — 8 unit tests |
 | 1 | Licensing secrets | **Tested** | `security/LicenceCode` (ECDSA P-256, public key only in app) + `tools/issue-licence.sh`; secret removed from both licence files |
 | 4 | Offline sync coverage | Not Started | sync engine exists; per-module coverage not yet audited |
-| 5 | Migration safety | Not Started (low risk) | migrations are explicit; needs `MigrationTestHelper` coverage |
+| 5 | Destructive migration fallback | **Fixed** | Correction to the first report: `.fallbackToDestructiveMigration()` DID exist (I said it did not). It is now `.fallbackToDestructiveMigrationFrom(1)`, so only the pre-accounting v1 schema can be wiped; any other missing migration fails loudly instead of deleting books. |
 | 7 | Branch isolation | **In Progress** | DAOs already take branchId for products, sales totals, barcode and search; `observeLowStock()`/`observeReorder()` did not, so alerts leaked other shops. Branch-scoped variants added and HomeScreen now uses `observeReorder(branchId)`. Remaining: reports that call `totalAllBranches` regardless of role, and hotel/inventory repositories. |
 | 8 | Role permissions | **In Progress** | Permissions were `role == "CASHIER"` string checks in three screens. `security/AccessPolicy.kt` now holds a capability matrix (8 tests); drawer and Business Tools gates ask it. Remaining: enforce inside repositories so a screen cannot bypass the policy. |
 | 9 | Logout clears business settings | **Fixed** (compile-verified) | `logout()` now removes only the 5 session keys |
-| 10 | Backup/restore atomicity | Not Started | needs write-to-temp + validate + swap |
+| 10 | Backup and restore | **Tested** | Backups now checkpoint the WAL first (the zip used to miss recent sales), write to `.part` and rename only when complete, and carry a manifest with SHA-256 and byte count. Restore no longer deletes the live database first: it proves the staged file is real SQLite, runs `PRAGMA integrity_check`, keeps `pre_restore/` safety copy, copies instead of renaming, and rolls back if the result is unreadable. 5 BackupIntegrity tests. |
 | 11 | Auto-update asset names | **Fixed** (unverified) | `AutoUpdate.kt` points at `releases/latest/download/deryaccount.apk`; must confirm the release actually publishes that filename |
 | 14 | Hotel check-in/out consistency | Not Started | needs `withTransaction` audit of hotel repo |
 | 15 | Branch attribution on auto entries | Not Started | `post()` accepts `branchId = null` |
