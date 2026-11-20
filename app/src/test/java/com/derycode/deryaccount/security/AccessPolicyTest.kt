@@ -25,11 +25,12 @@ class AccessPolicyTest {
     }
 
     @Test
-    fun `an accountant keeps the books but cannot sell`() {
+    fun `an accountant keeps the books and the till the shipped build gives them`() {
         assertTrue(AccessPolicy.can("ACCOUNTANT", Capability.VIEW_BOOKS))
         assertTrue(AccessPolicy.can("ACCOUNTANT", Capability.POST_EXPENSE))
         assertTrue(AccessPolicy.can("ACCOUNTANT", Capability.VIEW_REPORTS))
-        assertFalse("an accountant must not ring up sales", AccessPolicy.can("ACCOUNTANT", Capability.SELL))
+        // Shops are live: the accountant keeps POS access until the owner says otherwise.
+        assertTrue(AccessPolicy.can("ACCOUNTANT", Capability.SELL))
         assertFalse(AccessPolicy.can("ACCOUNTANT", Capability.ADJUST_STOCK))
         assertFalse(AccessPolicy.can("ACCOUNTANT", Capability.MANAGE_USERS))
     }

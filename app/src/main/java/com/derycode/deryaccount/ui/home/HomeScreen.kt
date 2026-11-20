@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.derycode.deryaccount.accounting.AccountingRepo
 import com.derycode.deryaccount.data.local.AppDatabase
+import com.derycode.deryaccount.security.AccessPolicy
+import com.derycode.deryaccount.security.Capability
 import com.derycode.deryaccount.ui.theme.*
 import kotlinx.coroutines.flow.first
 
@@ -50,6 +52,7 @@ private data class HomeStats(
 fun HomeScreen(
     db: AppDatabase,
     branchId: String,
+    role: String = "CASHIER",
     ownerName: String,
     branchName: String,
     onNavigate: (String) -> Unit
@@ -84,7 +87,13 @@ fun HomeScreen(
         } catch (_: Exception) { 0.0 }
 
         stats = HomeStats(cash, sales, stockVal, expenses)
-        val reorder = try { db.productDao().observeReorder(branchId).first() } catch (_: Exception) { emptyList() }
+        // Owners and managers keep the cross-branch view they have today; staff see
+        // only their own shop, so a cashier cannot read another branch's stock levels.
+        val reorder = try {
+            if (AccessPolicy.can(role, Capability.VIEW_ALL_BRANCHES))
+                db.productDao().observeReorder().first()
+            else db.productDao().observeReorder(branchId).first()
+        } catch (_: Exception) { emptyList() }
         reorderList = reorder.take(3)
         reorderCount = reorder.size
         loading = false

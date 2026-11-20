@@ -49,11 +49,13 @@ object AccessPolicy {
     )
 
     /**
-     * The accountant works on the books, not the till: no SELL, no hotel desk.
-     * If a shop really wants its accountant ringing sales, add Capability.SELL
-     * here and the tests will need updating with it.
+     * Accountants keep every right they already have in the shipped build: the
+     * books, expenses, reports AND the till. Shops are live, so taking a working
+     * screen away has to be the owner's decision, never a side effect of a
+     * refactor. Deleting Capability.SELL from this set is the one line that
+     * removes the POS from accountants.
      */
-    private val ACCOUNTANT_CAPS = setOf(
+    private val ACCOUNTANT_CAPS = CASHIER_CAPS + setOf(
         Capability.VIEW_BOOKS,
         Capability.POST_EXPENSE,
         Capability.VIEW_REPORTS,

@@ -344,7 +344,7 @@ fun DeryAccountApp() {
             modifier = Modifier.padding(padding)
         ) {
             composable("home") {
-                HomeScreen(db, branchId, ownerName.ifBlank { "Owner" }, branchName,
+                HomeScreen(db, branchId, role, ownerName.ifBlank { "Owner" }, branchName,
                     onNavigate = { route -> navController.navigate(route) { launchSingleTop = true } })
             }
             composable("sales") {

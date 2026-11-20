@@ -105,4 +105,23 @@ class MoneyTest {
     @Test fun `receipt sequence stays sortable past 9999`() {
         assertEquals("KAM-20261120-10000", Money.receiptNo("KAM", "20261120", 10000))
     }
+
+    @Test fun `adding VAT never moves the customer price`() {
+        // Before stage 1 tax was hardcoded to zero, so a sale totalled
+        // subtotal - discount. Treating prices as VAT-inclusive must leave that
+        // total untouched: only the split between Sales and VAT Payable changes.
+        val lines = listOf(45_000.0 to 18.0, 12_500.0 to 0.0, 8_000.0 to 18.0)
+        for (discount in listOf(0.0, 3_000.0, 7_500.0)) {
+            val legacyTotal = Money.round2(lines.sumOf { it.first } - discount)
+            val totals = Money.totals(lines, discount)
+            assertEquals(legacyTotal, totals.total, 0.0001)
+            assertEquals(Money.round2(totals.subtotal - discount), totals.total, 0.0001)
+        }
+    }
+
+    @Test fun `vat extracted never exceeds the money collected`() {
+        val totals = Money.totals(listOf(118_000.0 to 18.0), 0.0)
+        assertEquals(18_000.0, totals.taxTotal, 0.01)
+        assertTrue("tax cannot exceed the gross", totals.taxTotal < totals.subtotal)
+    }
 }
