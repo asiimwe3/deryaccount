@@ -33,7 +33,6 @@ object HotelLicence {
     private const val K_EXPIRES = "expires_at"
     private const val K_RECEIPTS = "receipts"
 
-    private const val SECRET = "DeryAccount-Offline-License-v1-2026-KampalaUG"
     private const val ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
     private const val PLAN_CODE = "HT"
 
@@ -129,30 +128,19 @@ object HotelLicence {
         return Activation(true, "Hotel Edition active", days, expires)
     }
 
-    fun issueCode(days: Int = 365): String {
-        val daysStr = String.format(Locale.US, "%04d", days)
-        val payload = PLAN_CODE + daysStr
-        val raw = payload + sign(payload).take(8)
-        return "DERY-" + raw.chunked(4).joinToString("-")
-    }
+    /**
+     * Hotel codes are issued offline with the private key now, so the app cannot
+     * mint one. Returns empty so any caller shows a clear "issue offline" state
+     * instead of handing out a code it signed itself.
+     */
+    fun issueCode(days: Int = 365): String = ""
 
     private fun verify(rawInput: String): Int? {
-        val clean = rawInput.trim().uppercase(Locale.US)
-            .removePrefix("DERY-").replace("-", "").replace(" ", "")
-        if (clean.length < 14) return null
-        if (clean.substring(0, 2) != PLAN_CODE) return null
-        val daysStr = clean.substring(2, 6)
-        val sig = clean.substring(6, 14)
-        if (sign(PLAN_CODE + daysStr).take(8) != sig) return null
-        val days = daysStr.toIntOrNull() ?: return null
-        if (days < 1 || days > 3650) return null
-        return days
-    }
-
-    private fun sign(payload: String): String {
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(SECRET.toByteArray(), "HmacSHA256"))
-        return base32(mac.doFinal(payload.toByteArray()))
+        // Verified by the same public-key scheme as the main licence, so the
+        // hotel unlock no longer carries a shared secret in the APK.
+        val payload = com.derycode.deryaccount.security.LicenceCode.verifyAny(rawInput) ?: return null
+        if (payload.planCode != PLAN_CODE) return null
+        return payload.days
     }
 
     private fun base32(bytes: ByteArray): String {

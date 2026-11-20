@@ -28,7 +28,7 @@ Statuses: `Not Started` · `In Progress` · `Fixed` · `Tested` · `Verified`
 | 2 | POS partial-payment accounting | **Tested** | `Money.outstanding/changeDue`, debt recorded for every method |
 | 13 | Duplicate receipt numbers | **Fixed** | receipt allocated inside the sale transaction; **unique index still to add (needs migration)** |
 | 6 | Password/PIN hashing | **Tested** | `security/PinHasher` (PBKDF2 150k, per-user salt), legacy upgrade-on-login, `security/LoginThrottle` — 8 unit tests |
-| 1 | Licensing secrets | Not Started | needs asymmetric signing + offline-issued codes; plan below |
+| 1 | Licensing secrets | **Tested** | `security/LicenceCode` (ECDSA P-256, public key only in app) + `tools/issue-licence.sh`; secret removed from both licence files |
 | 4 | Offline sync coverage | Not Started | sync engine exists; per-module coverage not yet audited |
 | 5 | Migration safety | Not Started (low risk) | migrations are explicit; needs `MigrationTestHelper` coverage |
 | 7 | Branch isolation | Not Started | needs query-by-branch audit across hotel/inventory/reports |
@@ -115,10 +115,31 @@ PIN tests prove: correct PIN verifies; wrong PIN, longer PIN and empty PIN rejec
 3. **No forced PIN reset** for staff whose PIN was set by someone else; and PINs are still 4 digits, so entropy stays low even with a good KDF.
 4. `SessionManager.sha256` still exists for other call sites; it should be deleted once nothing else depends on it.
 
+## Stage 3 — licensing without a shipped secret (finding 1)
+
+The app used to carry the HMAC **signing** secret in `License.kt` and `HotelLicence.kt`, so anyone who unpacked the APK could mint unlimited valid licences.
+
+- **New scheme:** `DERY2-<base32 payload>-<base32 signature>`, payload `PLAN|DAYS|SHOP|YYYYMMDD`, signed with ECDSA P-256 / SHA-256. The app holds only the **public** key (`LicenceCode.PUBLIC_KEY_HEX`, hex because `java.util.Base64` needs Android 8 and minSdk is 24). A public key can verify but cannot create.
+- **Issuer:** `tools/issue-licence.sh` signs offline with the private key. It lives at `licence-keys/deryaccount-licence-private.pem` in the workspace, **outside the repo and outside git**. Whoever holds it can mint licences, so it must be moved to a USB stick or password manager.
+- **No shop is locked out:** legacy 16-character HMAC codes still verify, but only until `LEGACY_SUNSET = 2027-06-30`. After that date a shop must hold a DERY2 code. The cutoff exists because the legacy secret is still inside old APKs, so leaving the old verifier open for ever would keep the hole open for ever.
+- **In-app generation removed:** `LicenseKeys.generate()` is deleted and `generateCodeForSupport()` / `HotelLicence.issueCode()` now return an empty string instead of a code signed by the app. No UI calls them (grep-verified), so nothing in the app breaks.
+
+### Tests executed
+- `./gradlew :app:testDebugUnitTest` → **33 tests, 0 failures** (15 money, 8 PIN, 10 licence).
+- Licence tests prove: a properly signed code verifies and yields its payload; a tampered payload is rejected even with the original signature attached; a code signed by a different key is rejected; garbage and out-of-range durations fail closed; the embedded public key parses as a valid P-256 key; legacy HMAC codes verify before the sunset and are rejected after it.
+- **End-to-end, actually run:** a code issued by `tools/issue-licence.sh` with the real private key was verified two ways — by `openssl dgst -verify` against the public key, and by the app's own `LicenceCode.verify()` through a temporary JVM test (passed, then removed). The embedded key was confirmed byte-identical to `deryaccount-licence-public.pem`.
+
+### Remaining risks in Stage 3
+1. **The legacy secret is still in the binary** for backward compatibility until 2027-06-30. A determined attacker can still forge legacy codes during that window. The only complete fix is dropping legacy support after reissuing licences, which is a business decision plus a comms task.
+2. **One keypair for all products.** Licence and hotel unlock share it. Rotating means shipping a new public key in a new build; there is no key-rotation path yet (two-key list would fix it).
+3. **Codes are long** (~120 chars) because they carry a real signature. Fine for paste/WhatsApp, awkward for reading over the phone.
+4. **No revocation.** An offline licence cannot be cancelled once issued; expiry is the only lever.
+5. **Private key custody is now the single point of failure.** If it is lost, no new licences can be issued with this build; if it leaks, licences can be forged.
+
 ## Recommended next steps, in risk order
 
 1. ~~Auth hardening (finding 6)~~ — done in Stage 2, pending device timing check.
-2. **Licensing (finding 1).** Move to Ed25519: private key stays offline (in the licence tool), public key ships in the app. Accept legacy HMAC codes during a transition window so existing activations keep working.
+2. ~~Licensing (finding 1)~~ — done in Stage 3 with ECDSA P-256 (Ed25519 is not available on Android 7, which this app still supports). Legacy codes sunset 2027-06-30.
 3. **Branch isolation and permissions (7, 8).** Enforce `branchId` at the DAO level (no query without a branch predicate) and check role in the repository, not the screen.
 4. **Unique receipt index (13).** Migration 10→11 with a duplicate pre-scan that reports, never deletes.
 5. **Backup/restore (10).** Write to `.tmp`, verify by reopening with Room, then atomically swap; keep the previous file as `.bak`.
