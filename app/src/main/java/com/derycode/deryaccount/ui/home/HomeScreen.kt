@@ -84,7 +84,7 @@ fun HomeScreen(
         } catch (_: Exception) { 0.0 }
 
         stats = HomeStats(cash, sales, stockVal, expenses)
-        val reorder = try { db.productDao().observeReorder().first() } catch (_: Exception) { emptyList() }
+        val reorder = try { db.productDao().observeReorder(branchId).first() } catch (_: Exception) { emptyList() }
         reorderList = reorder.take(3)
         reorderCount = reorder.size
         loading = false

@@ -31,8 +31,8 @@ Statuses: `Not Started` · `In Progress` · `Fixed` · `Tested` · `Verified`
 | 1 | Licensing secrets | **Tested** | `security/LicenceCode` (ECDSA P-256, public key only in app) + `tools/issue-licence.sh`; secret removed from both licence files |
 | 4 | Offline sync coverage | Not Started | sync engine exists; per-module coverage not yet audited |
 | 5 | Migration safety | Not Started (low risk) | migrations are explicit; needs `MigrationTestHelper` coverage |
-| 7 | Branch isolation | Not Started | needs query-by-branch audit across hotel/inventory/reports |
-| 8 | Cashier/staff permissions | Not Started | role checks are UI-level; repository has no guard |
+| 7 | Branch isolation | **In Progress** | DAOs already take branchId for products, sales totals, barcode and search; `observeLowStock()`/`observeReorder()` did not, so alerts leaked other shops. Branch-scoped variants added and HomeScreen now uses `observeReorder(branchId)`. Remaining: reports that call `totalAllBranches` regardless of role, and hotel/inventory repositories. |
+| 8 | Role permissions | **In Progress** | Permissions were `role == "CASHIER"` string checks in three screens. `security/AccessPolicy.kt` now holds a capability matrix (8 tests); drawer and Business Tools gates ask it. Remaining: enforce inside repositories so a screen cannot bypass the policy. |
 | 9 | Logout clears business settings | **Fixed** (compile-verified) | `logout()` now removes only the 5 session keys |
 | 10 | Backup/restore atomicity | Not Started | needs write-to-temp + validate + swap |
 | 11 | Auto-update asset names | **Fixed** (unverified) | `AutoUpdate.kt` points at `releases/latest/download/deryaccount.apk`; must confirm the release actually publishes that filename |

@@ -214,7 +214,9 @@ fun DeryAccountApp() {
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scopeDrawer = rememberCoroutineScope()
-    val isCashier = role == "CASHIER"
+    // Books, expenses, reports and settings are gated by AccessPolicy, not a
+    // role-string comparison, so an ACCOUNTANT keeps them and a cashier does not.
+    val isCashier = !com.derycode.deryaccount.security.AccessPolicy.can(role, com.derycode.deryaccount.security.Capability.VIEW_BOOKS)
     val drawerItems = buildList {
         add(Triple("home", "Dashboard", Icons.Default.Home))
         add(Triple("pos", "Sell / POS", Icons.Default.PointOfSale))

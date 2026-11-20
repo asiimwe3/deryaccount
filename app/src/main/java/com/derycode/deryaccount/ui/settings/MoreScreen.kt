@@ -128,8 +128,10 @@ fun MoreScreen(
         }
         Spacer(Modifier.height(16.dp))
 
-        val isCashier = userRole == "CASHIER"
-        val isOwner = userRole == "OWNER" || userRole == "MANAGER" || userRole == "ACCOUNTANT"
+        val isCashier = !com.derycode.deryaccount.security.AccessPolicy.can(
+            userRole, com.derycode.deryaccount.security.Capability.VIEW_BOOKS)
+        val isOwner = com.derycode.deryaccount.security.AccessPolicy.can(
+            userRole, com.derycode.deryaccount.security.Capability.MANAGE_SETTINGS)
         if (!isCashier) {
             Text("Business Tools", fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))

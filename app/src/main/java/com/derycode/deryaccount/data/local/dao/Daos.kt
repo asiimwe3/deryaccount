@@ -39,6 +39,20 @@ interface ProductDao {
                ORDER BY stockQty ASC""")
     fun observeReorder(): Flow<List<Product>>
 
+    /**
+     * Same watchlist for ONE branch. Audit finding 7: the unscoped version above
+     * let a cashier see another shop's low stock, and could not be used by any
+     * screen that must stay inside its own branch.
+     */
+    @Query("""SELECT * FROM products WHERE isDeleted = 0 AND branchId = :branchId AND stockQty <=
+               CASE WHEN reorderLevel > 0 THEN reorderLevel ELSE lowStockAlert END
+               ORDER BY stockQty ASC""")
+    fun observeReorder(branchId: String): Flow<List<Product>>
+
+    @Query("""SELECT * FROM products WHERE isDeleted = 0 AND branchId = :branchId
+               AND stockQty <= lowStockAlert ORDER BY stockQty ASC""")
+    fun observeLowStock(branchId: String): Flow<List<Product>>
+
     @Query("SELECT * FROM products WHERE syncState = 'pending' AND isDeleted = 0")
     suspend fun pendingSync(): List<Product>
 
