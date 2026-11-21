@@ -58,4 +58,49 @@ class BackupIntegrityTest {
         val sameSize = BackupIntegrity.Manifest(1, "now", BackupIntegrity.sha256Hex(db), tampered.length())
         assertFalse(BackupIntegrity.matchesManifest(tampered, sameSize))
     }
+
+    /** A fake-but-valid SQLite file: correct magic, then filler. */
+    private fun fakeDb(bytes: Int = 2048): ByteArray {
+        val head = "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII)
+        val out = ByteArray(bytes)
+        head.copyInto(out, 0)
+        for (i in head.size until bytes) out[i] = (i % 251).toByte()
+        return out
+    }
+
+    @Test
+    fun `a backup whose bytes match its manifest is accepted`() {
+        val db = tmp.newFile("match.db").apply { writeBytes(fakeDb()) }
+        val manifest = BackupIntegrity.Manifest(1, "2026-11-21T00:00:00Z",
+            BackupIntegrity.sha256Hex(db), db.length())
+        val roundTripped = BackupIntegrity.parseManifest(manifest.encode())
+        assertNotNull(roundTripped)
+        assertTrue(BackupIntegrity.matchesManifest(db, roundTripped!!))
+    }
+
+    @Test
+    fun `one changed byte in the database is refused`() {
+        val db = tmp.newFile("tampered.db").apply { writeBytes(fakeDb()) }
+        val manifest = BackupIntegrity.Manifest(1, "2026-11-21T00:00:00Z",
+            BackupIntegrity.sha256Hex(db), db.length())
+        val bytes = db.readBytes()
+        bytes[bytes.size - 1] = (bytes[bytes.size - 1] + 1).toByte()
+        db.writeBytes(bytes)
+        assertFalse(BackupIntegrity.matchesManifest(db, manifest))
+    }
+
+    @Test
+    fun `a truncated database is refused`() {
+        val db = tmp.newFile("short.db").apply { writeBytes(fakeDb()) }
+        val manifest = BackupIntegrity.Manifest(1, "2026-11-21T00:00:00Z",
+            BackupIntegrity.sha256Hex(db), db.length())
+        db.writeBytes(db.readBytes().copyOf(db.length().toInt() / 2))
+        assertFalse(BackupIntegrity.matchesManifest(db, manifest))
+    }
+
+    @Test
+    fun `a manifest missing its checksum is treated as unreadable`() {
+        assertNull(BackupIntegrity.parseManifest("version=1\ncreatedAt=x\ndatabaseBytes=10\n"))
+        assertNull(BackupIntegrity.parseManifest("version=1\ncreatedAt=x\ndatabaseSha256=abc\ndatabaseBytes=10\n"))
+    }
 }

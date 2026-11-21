@@ -35,6 +35,30 @@ import java.util.zip.ZipOutputStream
 fun BackupScreen(session: com.derycode.deryaccount.util.SessionManager) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    var restoreMsg by remember { mutableStateOf<String?>(null) }
+    var pendingRestore by remember { mutableStateOf<java.io.File?>(null) }
+    val pickBackup = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val staged = withContext(Dispatchers.IO) {
+                runCatching {
+                    val tmp = java.io.File(context.cacheDir, "picked_backup.zip")
+                    context.contentResolver.openInputStream(uri)!!.use { input ->
+                        tmp.outputStream().buffered().use { out -> input.copyTo(out) }
+                    }
+                    tmp
+                }.getOrNull()
+            }
+            if (staged == null) {
+                restoreMsg = "Could not open that file."
+            } else {
+                pendingRestore = staged
+                restoreMsg = null
+            }
+        }
+    }
     var preparing by remember { mutableStateOf(false) }
     var zipFile by remember { mutableStateOf<File?>(null) }
     var contents by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -110,10 +134,63 @@ fun BackupScreen(session: com.derycode.deryaccount.util.SessionManager) {
             }
         }
         Spacer(Modifier.height(16.dp))
+
+        // Restoring is the one action that can replace the shop's books, so it is
+        // verified first, staged second, and only swapped in when the app restarts.
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp)) {
+                Icon(Icons.Default.Restore, null, tint = DaGreen, modifier = Modifier.size(40.dp))
+                Spacer(Modifier.height(8.dp))
+                Text("Restore from a backup", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Pick a DeryAccount backup ZIP from this phone, Drive, or a chat. "
+                    + "It is checked before anything is replaced.", fontSize = 12.sp)
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(onClick = { pickBackup.launch(arrayOf("application/zip", "application/octet-stream", "*/*")) },
+                    modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                    Icon(Icons.Default.FolderOpen, null); Text("  Choose backup file")
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
         Text("Tip: prepare a backup at the end of every day and keep the latest copy "
             + "in Drive or TeraBox. Your data lives only on this phone — a backup is "
             + "your only protection if the phone is lost.",
             fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+
+    pendingRestore?.let { file ->
+        AlertDialog(
+            onDismissRequest = { pendingRestore = null },
+            title = { Text("Restore this backup?") },
+            text = { Text("Your current records are kept as a safety copy first. "
+                + "After restoring, close and reopen DeryAccount to load the backup.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRestore = null
+                    scope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            com.derycode.deryaccount.data.local.BackupRestore.stageFromZip(context, file)
+                        }
+                        restoreMsg = when (result) {
+                            is com.derycode.deryaccount.data.local.BackupRestore.Result.Ready ->
+                                "Backup checked and ready. Close and reopen DeryAccount now to finish restoring."
+                            is com.derycode.deryaccount.data.local.BackupRestore.Result.Refused -> result.reason
+                        }
+                    }
+                }) { Text("Restore") }
+            },
+            dismissButton = { TextButton(onClick = { pendingRestore = null }) { Text("Cancel") } }
+        )
+    }
+
+    restoreMsg?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { restoreMsg = null },
+            title = { Text("Restore") },
+            text = { Text(msg) },
+            confirmButton = { TextButton(onClick = { restoreMsg = null }) { Text("OK") } }
+        )
     }
 }
 
