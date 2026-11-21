@@ -360,6 +360,7 @@ fun DeryAccountApp() {
             composable("inventory") {
                 InventoryScreen(db, branchId)
             }
+            if (com.derycode.deryaccount.config.Features.HOTEL_DESK)
             composable("hotel") {
                 // The hotel module is its own subscription: when it is not active
                 // (no trial left and no code) the hotel screens pause here and the
@@ -373,6 +374,7 @@ fun DeryAccountApp() {
                     )
                 }
             }
+            if (com.derycode.deryaccount.config.Features.HOTEL_DESK)
             composable("hotelicence") {
                 com.derycode.deryaccount.ui.hotel.HotelEditionScreen(
                     session = session,

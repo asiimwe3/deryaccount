@@ -129,6 +129,7 @@ fun HomeScreen(
                     Text("DeryAccount", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = DaTextPrimary)
                     Text(branchName.ifBlank { "Business Suite" }, fontSize = 10.5.sp, color = DaTextMuted)
                 }
+                if (com.derycode.deryaccount.config.Features.HOTEL_DESK)
                 com.derycode.deryaccount.billing.HotelLicence.state(context).let { hs ->
                     if (!hs.open) {
                         Box(
@@ -216,7 +217,12 @@ fun HomeScreen(
         }
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            QuickAction(Modifier.weight(1f), "Hotel desk", Icons.Default.Hotel, DaBlue) { onNavigate("hotel") }
+            // Hotel desk is off in this build (Features.HOTEL_DESK). Customers takes
+            // the space so the dashboard stays balanced instead of showing one tile.
+            if (com.derycode.deryaccount.config.Features.HOTEL_DESK)
+                QuickAction(Modifier.weight(1f), "Hotel desk", Icons.Default.Hotel, DaBlue) { onNavigate("hotel") }
+            else
+                QuickAction(Modifier.weight(1f), "Customers", Icons.Default.People, DaBlue) { onNavigate("customers") }
             QuickAction(Modifier.weight(1f), "Reports", Icons.Default.Insights, DaGreen) { onNavigate("reports") }
         }
 

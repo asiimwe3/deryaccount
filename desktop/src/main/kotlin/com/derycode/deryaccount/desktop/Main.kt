@@ -138,6 +138,9 @@ fun AppShell(app: AppState) {
         Column(Modifier.weight(1f).fillMaxHeight()) {
             TopBar(app)
             Box(Modifier.weight(1f).fillMaxWidth()) {
+                // A stored or deep-linked hotel screen must not open while the desk
+                // is switched off; fall through to the dashboard instead.
+                if (!Features.HOTEL_DESK && app.screen.startsWith("hotel")) app.screen = "dashboard"
                 when (app.screen) {
                     "dashboard" -> DashboardScreen(app)
                     "pos" -> PosScreen(app)
@@ -191,8 +194,14 @@ fun AppShell(app: AppState) {
 private fun Sidebar(app: AppState) {
     val profile = remember(app.tick) { app.repo.profile() }
     val visible = navItems.filter { item ->
-        if (!app.isCashier) true
-        else item.key in listOf("dashboard", "pos", "sales", "stock", "purchases", "shift", "customers", "docs")
+        // The hotel desk is off in this build (Features.HOTEL_DESK), so its rows
+        // never appear for any role. Its data stays in the database untouched.
+        val hotelHidden = !Features.HOTEL_DESK && item.group == "HOTEL"
+        when {
+            hotelHidden -> false
+            !app.isCashier -> true
+            else -> item.key in listOf("dashboard", "pos", "sales", "stock", "purchases", "shift", "customers", "docs")
+        }
     }
     Column(
         Modifier.width(238.dp).fillMaxHeight().background(Da.Sidebar)
