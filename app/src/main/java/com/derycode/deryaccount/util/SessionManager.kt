@@ -26,6 +26,8 @@ class SessionManager(private val context: Context) {
         val KEY_BRANCH_NAME = stringPreferencesKey("branch_name")
         val KEY_SB_URL = stringPreferencesKey("supabase_url")
         val KEY_SB_KEY = stringPreferencesKey("supabase_anon_key")
+        val KEY_SB_TOKEN = stringPreferencesKey("supabase_device_token")
+        val KEY_DEVICE_ID = stringPreferencesKey("device_id")
         val KEY_TUTORIAL_DONE = stringPreferencesKey("tutorial_done")
         val KEY_PROFILE_NAME = stringPreferencesKey("profile_name")
         val KEY_PROFILE_PHONE = stringPreferencesKey("profile_phone")
@@ -110,8 +112,30 @@ class SessionManager(private val context: Context) {
         }
     }
 
-    suspend fun saveSupabase(url: String, anonKey: String) {
-        context.dataStore.edit { it[KEY_SB_URL] = url; it[KEY_SB_KEY] = anonKey }
+    suspend fun saveSupabase(url: String, anonKey: String, deviceToken: String? = null) {
+        context.dataStore.edit {
+            it[KEY_SB_URL] = url
+            it[KEY_SB_KEY] = anonKey
+            if (deviceToken != null) it[KEY_SB_TOKEN] = deviceToken.trim()
+        }
+    }
+
+    /** The device token issued when this till was registered in the cloud. */
+    suspend fun supabaseDeviceToken(): String? =
+        context.dataStore.data.first()[KEY_SB_TOKEN]?.takeIf { it.isNotBlank() }
+
+    /**
+     * A stable id for THIS install, created once and kept. It names the till in
+     * the cloud so the dashboard can say "Counter 1 synced 2 min ago" and so two
+     * devices' sales never merge. Surviving app updates is enough; a reinstall
+     * gets a new id, which is the honest outcome.
+     */
+    suspend fun deviceId(): String {
+        val existing = context.dataStore.data.first()[KEY_DEVICE_ID]
+        if (existing != null && existing.isNotBlank()) return existing
+        val fresh = java.util.UUID.randomUUID().toString()
+        context.dataStore.edit { it[KEY_DEVICE_ID] = fresh }
+        return fresh
     }
 
     suspend fun supabaseConfig(): Pair<String, String>? {

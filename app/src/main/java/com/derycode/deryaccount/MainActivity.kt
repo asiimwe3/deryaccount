@@ -102,7 +102,9 @@ fun DeryAccountApp() {
         session.role.collect { r -> if (r != null) role = r }
     }
     LaunchedEffect(Unit) {
-        session.supabaseConfig()?.let { (url, key) -> SupabaseClient.init(url, key) }
+        session.supabaseConfig()?.let { (url, key) ->
+            SupabaseClient.init(url, key, session.supabaseDeviceToken(), session.deviceId())
+        }
         combine(session.userId, session.branchId) { uid, bid -> uid to bid }
             .collect { (uid, bid) ->
                 sessionState = if (uid != null && bid != null) uid to bid else null

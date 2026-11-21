@@ -43,6 +43,7 @@ fun MoreScreen(
     var syncMsg by remember { mutableStateOf<String?>(null) }
     var sbUrl by remember { mutableStateOf("") }
     var sbKey by remember { mutableStateOf("") }
+    var sbToken by remember { mutableStateOf("") }
     val licenseState = remember { com.derycode.deryaccount.billing.LicenseManager.state(context) }
     var backupMsg by remember { mutableStateOf<String?>(null) }
     var restoreMsg by remember { mutableStateOf<String?>(null) }
@@ -335,11 +336,14 @@ fun MoreScreen(
                 OutlinedTextField(sbKey, { sbKey = it }, label = { Text("Anon key") },
                     modifier = Modifier.fillMaxWidth(), singleLine = true)
                 Spacer(Modifier.height(8.dp))
+                OutlinedTextField(sbToken, { sbToken = it }, label = { Text("Device token (from the admin)") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true)
+                Spacer(Modifier.height(8.dp))
                 Button(onClick = {
                     if (sbUrl.isNotBlank() && sbKey.isNotBlank()) {
                         scope.launch {
-                            session.saveSupabase(sbUrl.trim(), sbKey.trim())
-                            SupabaseClient.init(sbUrl.trim(), sbKey.trim())
+                            session.saveSupabase(sbUrl.trim(), sbKey.trim(), sbToken.trim())
+                            SupabaseClient.init(sbUrl.trim(), sbKey.trim(), sbToken.trim(), session.deviceId())
                             val r = syncEngine.syncAll()
                             syncMsg = "Connected & synced: pushed ${r.pushed}, pulled ${r.pulled}"
                         }

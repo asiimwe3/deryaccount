@@ -149,6 +149,10 @@ class SyncEngine(private val context: Context, private val db: AppDatabase) {
         .put("change_given", changeGiven).put("payment_method", paymentMethod)
         .put("sold_at", soldAt).put("shift_id", shiftId ?: JSONObject.NULL)
         .put("created_at", createdAt).put("updated_at", updatedAt)
+        // Cloud attribution: which till and which platform made this sale. Both
+        // are nullable server-side, so an unregistered device still syncs.
+        .put("platform", "android")
+        .put("device_id", com.derycode.deryaccount.data.remote.SupabaseClient.instance?.deviceId ?: JSONObject.NULL)
 
     private fun com.derycode.deryaccount.data.local.entity.Product.toJson() = JSONObject()
         .put("id", id).put("name", name).put("barcode", barcode ?: JSONObject.NULL)

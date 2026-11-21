@@ -12,7 +12,16 @@ import java.util.concurrent.TimeUnit
  * Thin Supabase REST (PostgREST) client.
  * Config points at the DeryAccount Supabase project.
  */
-class SupabaseClient(private val baseUrl: String, private val anonKey: String) {
+class SupabaseClient(
+    private val baseUrl: String,
+    private val anonKey: String,
+    /** This till's upload credential. Sent as x-device-token so the cloud can
+     *  prove an upload really came from a registered device: the anon key alone
+     *  cannot write sales. Null until the shop registers the device. */
+    private val deviceToken: String? = null,
+    /** This till's id, so every sale is attributed to the device that made it. */
+    val deviceId: String? = null
+) {
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -27,6 +36,7 @@ class SupabaseClient(private val baseUrl: String, private val anonKey: String) {
         val req = Request.Builder()
             .url(url)
             .header("apikey", anonKey)
+            .apply { deviceToken?.let { header("x-device-token", it) } }
             .header("Authorization", "Bearer $anonKey")
             .header("Accept", "application/json")
             .get().build()
@@ -43,6 +53,7 @@ class SupabaseClient(private val baseUrl: String, private val anonKey: String) {
         val req = Request.Builder()
             .url(url)
             .header("apikey", anonKey)
+            .apply { deviceToken?.let { header("x-device-token", it) } }
             .header("Authorization", "Bearer $anonKey")
             .header("Content-Type", "application/json")
             .header("Prefer", "resolution=merge-duplicates,return=minimal")
@@ -58,6 +69,7 @@ class SupabaseClient(private val baseUrl: String, private val anonKey: String) {
         val req = Request.Builder()
             .url("$baseUrl/rest/v1/rpc/$fn")
             .header("apikey", anonKey)
+            .apply { deviceToken?.let { header("x-device-token", it) } }
             .header("Authorization", "Bearer $anonKey")
             .header("Content-Type", "application/json")
             .post(body.toString().toRequestBody(json))
@@ -76,6 +88,7 @@ class SupabaseClient(private val baseUrl: String, private val anonKey: String) {
         val req = Request.Builder()
             .url("$baseUrl/rest/v1/branches?select=id&limit=1")
             .header("apikey", anonKey)
+            .apply { deviceToken?.let { header("x-device-token", it) } }
             .header("Authorization", "Bearer $anonKey")
             .get().build()
         return try {
@@ -88,9 +101,11 @@ class SupabaseClient(private val baseUrl: String, private val anonKey: String) {
         @Volatile var instance: SupabaseClient? = null
             private set
 
-        fun init(baseUrl: String, anonKey: String) {
-            if (instance == null || instance!!.baseUrl != baseUrl) {
-                instance = SupabaseClient(baseUrl, anonKey)
+        fun init(baseUrl: String, anonKey: String, deviceToken: String? = null, deviceId: String? = null) {
+            val current = instance
+            if (current == null || current.baseUrl != baseUrl ||
+                current.deviceToken != deviceToken || current.deviceId != deviceId) {
+                instance = SupabaseClient(baseUrl, anonKey, deviceToken, deviceId)
             }
         }
     }
